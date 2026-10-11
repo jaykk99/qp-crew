@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Quonset Place — Crew System</title>
+<style>
+  :root { --bg:#0b0b0d; --card:#16161a; --red:#d7263d; --txt:#f5f5f5; --dim:#9a9aa3; --green:#2d6a4f; --gold:#ffb300; }
+  * { box-sizing:border-box; }
+  body { background:var(--bg); color:var(--txt); font-family:system-ui,sans-serif; margin:0; padding:16px; }
+  main { max-width:960px; margin:0 auto; }
+  h1 { color:var(--red); margin:8px 0 2px; }
+  .sub { color:var(--dim); font-size:14px; margin-bottom:16px; }
+  .tabs { display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap; }
+  .tab { background:var(--card); border:1px solid #2a2a30; color:var(--txt); border-radius:8px; padding:10px 18px; cursor:pointer; font-size:15px; }
+  .tab.active { background:var(--red); border-color:var(--red); font-weight:700; }
+  .panel { display:none; } .panel.active { display:block; }
+  .card { background:var(--card); border:1px solid #2a2a30; border-radius:10px; padding:16px; margin-bottom:12px; }
+  .card h3 { margin:0 0 8px; }
+  .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+  input, select, textarea { background:#0b0b0d; border:1px solid #2a2a30; color:var(--txt); border-radius:8px; padding:10px 12px; font-size:15px; }
+  input, select { min-width:0; }
+  label { display:block; color:var(--dim); font-size:13px; margin:10px 0 4px; }
+  button { background:var(--red); color:#fff; border:0; border-radius:8px; padding:10px 20px; font-size:15px; font-weight:700; cursor:pointer; }
+  button.ghost { background:#222228; color:var(--txt); border:1px solid #2a2a30; font-weight:400; }
+  button.green { background:var(--green); }
+  button:disabled { opacity:.45; }
+  .pill { display:inline-block; border-radius:20px; padding:3px 12px; font-size:12px; font-weight:700; }
+  .p-assigned { background:#333; } .p-progress { background:#7c5a00; } .p-done { background:#1d4ed8; }
+  .p-confirmed { background:var(--green); } .p-payable { background:var(--gold); color:#000; } .p-paid { background:#444; color:#aaa; }
+  .money { font-size:22px; font-weight:800; color:var(--gold); }
+  .muted { color:var(--dim); font-size:14px; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  @media (max-width:640px){ .grid2{grid-template-columns:1fr;} }
+  .del { background:none; border:none; color:#666; cursor:pointer; font-size:18px; padding:4px 8px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Quonset Place — Crew</h1>
+  <div class="sub">Quoters quote. Workers build at $25/hr. Nobody gets paid until the customer confirms.</div>
+  <div class="tabs">
+    <button class="tab active" data-t="dash">Dashboard</button>
+    <button class="tab" data-t="crew">Crew</button>
+    <button class="tab" data-t="jobs">Jobs</button>
+  </div>
+
+  <div id="p-dash" class="panel active"></div>
+
+  <div id="p-crew" class="panel">
+    <div class="card">
+      <h3>Add crew member</h3>
+      <div class="grid2">
+        <div><label>Name</label><input id="c-name" placeholder="Full name"></div>
+        <div><label>Phone</label><input id="c-phone" placeholder="204-..."></div>
+        <div><label>Role</label><select id="c-role"><option value="quoter">Quoter</option><option value="worker">Worker</option></select></div>
+        <div><label>Rate ($/hr, workers)</label><input id="c-rate" type="number" value="25" min="0"></div>
+      </div>
+      <div style="margin-top:12px"><button onclick="addCrew()">Add</button></div>
+    </div>
+    <div id="crew-list"></div>
+  </div>
+
+  <div id="p-jobs" class="panel">
+    <div class="card">
+      <h3>New job</h3>
+      <div class="grid2">
+        <div><label>Customer name</label><input id="j-cust" placeholder="Customer"></div>
+        <div><label>Phone</label><input id="j-phone" placeholder="204-..."></div>
+        <div><label>Address</label><input id="j-addr" placeholder="Job address"></div>
+        <div><label>Type</label><select id="j-type"><option value="quote">Quote visit</option><option value="build">Build</option></select></div>
+        <div><label>Assign to</label><select id="j-who"></select></div>
+        <div><label>Date</label><input id="j-date" type="date"></div>
+      </div>
+      <div><label>Notes</label><textarea id="j-notes" rows="2" style="width:100%" placeholder="Building size, details..."></textarea></div>
+      <div style="margin-top:12px"><button onclick="addJob()">Create job</button></div>
+    </div>
+    <div id="job-list"></div>
+  </div>
+</main>
+<script>
+const DB_KEY = 'qp_crew_v1';
+let db = load() || { crew: [], jobs: [] };
+function load(){ try { return JSON.parse(localStorage.getItem(DB_KEY)); } catch(e){ return null; } }
+function save(){ localStorage.setItem(DB_KEY, JSON.stringify(db)); }
+const uid = () => Math.random().toString(36).slice(2, 9);
+const esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const STATUS = ['assigned','in progress','done','customer confirmed','payable','paid'];
+const pill = s => `<span class="pill p-${s.replace(/ /g,'').replace('customerconfirmed','confirmed')}">${esc(s)}</span>`;
+
+document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => {
+  document.querySelectorAll('.tab').forEach(x => x.classList.toggle('active', x === t));
+  document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === 'p-' + t.dataset.t));
+}));
+
+// ---------- crew ----------
+function addCrew(){
+  const name = document.getElementById('c-name').value.trim();
+  if (!name) return alert('Name required');
+  db.crew.push({ id: uid(), name, phone: document.getElementById('c-phone').value.trim(),
+    role: document.getElementById('c-role').value,
+    rate: parseFloat(document.getElementById('c-rate').value) || 25 });
+  document.getElementById('c-name').value = ''; document.getElementById('c-phone').value = '';
+  save(); render();
+}
+function delCrew(id){
+  if (!confirm('Remove this crew member?')) return;
+  db.crew = db.crew.filter(c => c.id !== id);
+  save(); render();
+}
+
+// ---------- jobs ----------
+function refreshWho(){
+  const sel = document.getElementById('j-who');
+  sel.innerHTML = db.crew.map(c => `<option value="${c.id}">${esc(c.name)} (${c.role})</option>`).join('') || '<option value="">Add crew first</option>';
+}
+function addJob(){
+  const cust = document.getElementById('j-cust').value.trim();
+  const who = document.getElementById('j-who').value;
+  if (!cust || !who) return alert('Customer and crew member required');
+  db.jobs.push({ id: uid(), cust, phone: document.getElementById('j-phone').value.trim(),
+    addr: document.getElementById('j-addr').value.trim(), type: document.getElementById('j-type').value,
+    who, date: document.getElementById('j-date').value, notes: document.getElementById('j-notes').value.trim(),
+    status: 'assigned', hours: 0, amount: 0, created: Date.now() });
+  ['j-cust','j-phone','j-addr','j-notes'].forEach(i => document.getElementById(i).value = '');
+  save(); render();
+}
+function setStatus(id, s){
+  const j = db.jobs.find(x => x.id === id); if (!j) return;
+  j.status = s;
+  if (s === 'payable' && j.type === 'build' && !j.amount) {
+    const c = db.crew.find(x => x.id === j.who);
+    j.amount = Math.round(j.hours * (c ? c.rate : 25) * 100) / 100;
+  }
+  save(); render();
+}
+function setHours(id, h){
+  const j = db.jobs.find(x => x.id === id); if (!j) return;
+  j.hours = Math.max(0, parseFloat(h) || 0);
+  const c = db.crew.find(x => x.id === j.who);
+  if (j.type === 'build') j.amount = Math.round(j.hours * (c ? c.rate : 25) * 100) / 100;
+  save(); render();
+}
+function setAmount(id, a){
+  const j = db.jobs.find(x => x.id === id); if (!j) return;
+  j.amount = Math.max(0, parseFloat(a) || 0);
+  save(); render();
+}
+function delJob(id){
+  if (!confirm('Delete this job?')) return;
+  db.jobs = db.jobs.filter(j => j.id !== id);
+  save(); render();
+}
+const crewName = id => (db.crew.find(c => c.id === id) || {}).name || '—';
+
+// ---------- render ----------
+function render(){
+  refreshWho();
+  // crew list
+  document.getElementById('crew-list').innerHTML = db.crew.map(c =>
+    `<div class="card"><div class="row" style="justify-content:space-between">
+      <div><h3 style="margin:0">${esc(c.name)}</h3>
+      <div class="muted">${c.role === 'worker' ? 'Worker · $' + c.rate + '/hr' : 'Quoter · paid per confirmed quote'} · ${esc(c.phone)}</div></div>
+      <button class="del" onclick="delCrew('${c.id}')">×</button>
+    </div></div>`).join('') || '<div class="muted">No crew yet.</div>';
+
+  // jobs list
+  const sorted = [...db.jobs].sort((a,b) => b.created - a.created);
+  document.getElementById('job-list').innerHTML = sorted.map(j => `
+    <div class="card">
+      <div class="row" style="justify-content:space-between">
+        <div><h3 style="margin:0">${esc(j.cust)} ${pill(j.status)}</h3>
+        <div class="muted">${j.type === 'quote' ? 'Quote visit' : 'Build'} · ${esc(crewName(j.who))} · ${esc(j.addr)} ${j.date ? '· ' + j.date : ''}</div>
+        ${j.notes ? `<div class="muted">${esc(j.notes)}</div>` : ''}</div>
+        <button class="del" onclick="delJob('${j.id}')">×</button>
+      </div>
+      <div class="row" style="margin-top:10px">
+        ${j.type === 'build' ? `<label style="margin:0">Hours <input type="number" min="0" step="0.5" value="${j.hours}" style="width:80px" onchange="setHours('${j.id}', this.value)"></label>` : ''}
+        <label style="margin:0">Pay $ <input type="number" min="0" step="1" value="${j.amount}" style="width:100px" onchange="setAmount('${j.id}', this.value)"></label>
+        <select onchange="setStatus('${j.id}', this.value)">
+          ${STATUS.map(s => `<option ${s === j.status ? 'selected' : ''}>${s}</option>`).join('')}
+        </select>
+      </div>
+    </div>`).join('') || '<div class="muted">No jobs yet.</div>';
+
+  // dashboard
+  const payable = db.jobs.filter(j => j.status === 'payable');
+  const paid = db.jobs.filter(j => j.status === 'paid');
+  const owed = payable.reduce((s,j) => s + (j.amount || 0), 0);
+  const paidTotal = paid.reduce((s,j) => s + (j.amount || 0), 0);
+  const byPerson = {};
+  payable.forEach(j => { const n = crewName(j.who); byPerson[n] = (byPerson[n] || 0) + (j.amount || 0); });
+  const active = db.jobs.filter(j => !['paid','payable'].includes(j.status)).length;
+  document.getElementById('p-dash').innerHTML = `
+    <div class="grid2">
+      <div class="card"><div class="muted">Owed right now</div><div class="money">$${owed.toFixed(2)}</div>
+        <div class="muted">${payable.length} job(s) confirmed, awaiting pay</div></div>
+      <div class="card"><div class="muted">Paid out total</div><div class="money" style="color:var(--green)">$${paidTotal.toFixed(2)}</div>
+        <div class="muted">${paid.length} job(s) paid</div></div>
+    </div>
+    <div class="card"><h3>Who gets paid</h3>
+      ${Object.keys(byPerson).length ? Object.entries(byPerson).map(([n,a]) =>
+        `<div class="row" style="justify-content:space-between; padding:6px 0"><b>${esc(n)}</b><span class="money">$${a.toFixed(2)}</span></div>`).join('')
+        : '<div class="muted">Nobody owed right now.</div>'}
+    </div>
+    <div class="card"><h3>Active jobs: ${active}</h3>
+      <div class="muted">Move a job to "customer confirmed" then "payable" once the customer signs off. Pay from the "Who gets paid" list, then mark "paid".</div></div>`;
+}
+render();
+</script>
+</body>
+</html>
