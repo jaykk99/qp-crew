@@ -56,6 +56,24 @@
   .timelog .trow { display:flex; justify-content:space-between; align-items:center; padding:4px 0; font-size:14px; }
   .clocked { color:#7dffb0; font-weight:700; }
   .file-label { background:#222228; color:var(--txt); border:1px solid #2a2a30; border-radius:8px; padding:10px 20px; font-size:15px; cursor:pointer; }
+  button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, .tab:focus-visible, .file-label:focus-visible {
+    outline:2px solid var(--gold); outline-offset:2px;
+  }
+  #invoice-root { display:none; padding:16px; }
+  body.invoicing main { display:none; }
+  body.invoicing #invoice-root { display:block; }
+  .invoice { background:#fff; color:#111; border-radius:10px; padding:28px; max-width:720px; margin:24px auto; }
+  .invoice h2 { color:#b71c2c; margin:0 0 4px; }
+  .invoice .inv-sub { color:#555; font-size:14px; margin-bottom:8px; }
+  .invoice table { width:100%; border-collapse:collapse; margin:14px 0; }
+  .invoice th, .invoice td { text-align:left; padding:8px; border-bottom:1px solid #ddd; font-size:14px; color:#111; }
+  .invoice td.num, .invoice th.num { text-align:right; }
+  .invoice .total-row td { font-weight:800; font-size:16px; border-top:2px solid #111; }
+  .invoice .inv-foot { color:#555; font-size:12px; margin-top:16px; }
+  @media print {
+    body.invoicing #invoice-root { padding:0; }
+    .invoice { margin:0; max-width:none; border-radius:0; }
+  }
   @media print {
     body { background:#fff; color:#000; padding:0; }
     .tabs, button, input, select, textarea, .print-hide, .del { display:none !important; }
@@ -70,11 +88,11 @@
 <main>
   <h1>Quonset Place Crew</h1>
   <div class="sub">Quoters quote. Workers build at $25/hr. Nobody gets paid until the customer confirms.</div>
-  <div class="tabs">
-    <button class="tab active" data-t="dash">Dashboard</button>
-    <button class="tab" data-t="crew">Crew</button>
-    <button class="tab" data-t="sched">Schedule</button>
-    <button class="tab" data-t="jobs">Jobs</button>
+  <div class="tabs" role="tablist" aria-label="Crew app sections">
+    <button class="tab active" data-t="dash" role="tab" aria-selected="true">Dashboard</button>
+    <button class="tab" data-t="crew" role="tab" aria-selected="false">Crew</button>
+    <button class="tab" data-t="sched" role="tab" aria-selected="false">Schedule</button>
+    <button class="tab" data-t="jobs" role="tab" aria-selected="false">Jobs</button>
   </div>
 
   <div id="p-dash" class="panel active"></div>
@@ -90,6 +108,31 @@
         <div><label>Quote fee ($/confirmed quote, quoters)</label><input id="c-qfee" type="number" value="25" min="0"></div>
       </div>
       <div style="margin-top:12px"><button onclick="addCrew()">Add</button></div>
+    </div>
+    <div class="card print-hide">
+      <div class="row">
+        <input id="crew-search" placeholder="Search crew by name or phone..." style="flex:1; min-width:200px" aria-label="Search crew" oninput="crewQuery=this.value; renderCrew()">
+        <select id="crew-role-filter" aria-label="Filter crew by role" onchange="crewRoleFilter=this.value; renderCrew()">
+          <option value="">All roles</option>
+          <option value="worker">Workers</option>
+          <option value="quoter">Quoters</option>
+        </select>
+      </div>
+    </div>
+    <div class="card print-hide">
+      <h3>Payroll settings</h3>
+      <div class="row">
+        <label style="margin:0">Overtime rule
+          <select id="set-otmode" aria-label="Overtime rule">
+            <option value="none">No overtime</option>
+            <option value="daily">OT after 8h/day</option>
+            <option value="weekly">OT after 40h/week</option>
+          </select>
+        </label>
+        <label style="margin:0">OT multiplier <input id="set-otrate" type="number" min="1" step="0.25" style="width:90px" aria-label="Overtime multiplier"></label>
+        <button class="ghost" onclick="saveSettings()">Save</button>
+      </div>
+      <div class="muted">Overtime is computed from clock-in time logs per crew member, then split across their jobs by hours worked.</div>
     </div>
     <div id="crew-list"></div>
   </div>
@@ -136,8 +179,8 @@
     </div>
     <div class="card print-hide">
       <div class="row">
-        <input id="job-search" placeholder="Search customer, address, notes..." style="flex:1; min-width:200px" oninput="jobQuery=this.value; renderJobs()">
-        <select id="job-status-filter" onchange="jobStatusFilter=this.value; renderJobs()">
+        <input id="job-search" placeholder="Search customer, address, notes..." style="flex:1; min-width:200px" aria-label="Search jobs" oninput="jobQuery=this.value; renderJobs()">
+        <select id="job-status-filter" aria-label="Filter jobs by status" onchange="jobStatusFilter=this.value; renderJobs()">
           <option value="">All statuses</option>
           <option value="assigned">Assigned</option>
           <option value="in progress">In progress</option>
@@ -146,7 +189,7 @@
           <option value="payable">Payable</option>
           <option value="paid">Paid</option>
         </select>
-        <select id="job-sort" onchange="jobSort=this.value; renderJobs()">
+        <select id="job-sort" aria-label="Sort jobs" onchange="jobSort=this.value; renderJobs()">
           <option value="new">Newest first</option>
           <option value="date">Job date</option>
           <option value="cust">Customer A-Z</option>
@@ -155,6 +198,7 @@
     </div>
     <div id="job-list"></div>
   </div>
+  <div id="invoice-root" aria-live="polite"></div>
 
   <div class="card print-hide" style="margin-top:16px">
     <h3>Data backup</h3>
@@ -164,6 +208,7 @@
       <button class="ghost" onclick="clearAll()">Erase everything</button>
     </div>
     <div class="muted" style="margin-top:8px">Backups stay on this device. Nothing is sent to any server.</div>
+    <div id="integrity" style="margin-top:8px"></div>
   </div>
 </main>
 <script>
@@ -179,7 +224,7 @@ const STATUS = [
   { key: 'paid', label: 'Paid', cls: 'paid' },
 ];
 
-function freshDb(){ return { crew: [], jobs: [], shifts: [], timeLogs: [], activity: [], meta: { version: 2 } }; }
+function freshDb(){ return { crew: [], jobs: [], shifts: [], timeLogs: [], expenses: [], activity: [], meta: { version: 3, settings: { otMode: 'none', otRate: 1.5 } } }; }
 function load(){ try { return JSON.parse(localStorage.getItem(DB_KEY)); } catch (e) { return null; } }
 function save(){ try { localStorage.setItem(DB_KEY, JSON.stringify(db)); } catch (e) { alert('Could not save: storage full or blocked.'); } }
 function migrate(){
@@ -188,8 +233,10 @@ function migrate(){
   if (!Array.isArray(db.jobs)) db.jobs = [];
   if (!Array.isArray(db.shifts)) db.shifts = [];
   if (!Array.isArray(db.timeLogs)) db.timeLogs = [];
+  if (!Array.isArray(db.expenses)) db.expenses = [];
   if (!Array.isArray(db.activity)) db.activity = [];
-  if (!db.meta || typeof db.meta !== 'object') db.meta = { version: 2 };
+  if (!db.meta || typeof db.meta !== 'object') db.meta = { version: 3, settings: { otMode: 'none', otRate: 1.5 } };
+  if (!db.meta.settings || typeof db.meta.settings !== 'object') db.meta.settings = { otMode: 'none', otRate: 1.5 };
   db.crew.forEach(c => {
     if (typeof c.rate !== 'number') c.rate = DEFAULT_RATE;
     if (typeof c.quoteFee !== 'number') c.quoteFee = DEFAULT_RATE;
@@ -197,6 +244,8 @@ function migrate(){
   db.jobs.forEach(j => {
     if (typeof j.hours !== 'number') j.hours = 0;
     if (typeof j.amount !== 'number') j.amount = 0;
+    if (typeof j.price !== 'number') j.price = 0;
+    if (!Array.isArray(j.photos)) j.photos = [];
     if (!j.status) j.status = 'assigned';
     if (!j.created) j.created = Date.now();
   });
@@ -205,6 +254,7 @@ function migrate(){
 let db = load() || freshDb();
 migrate();
 let jobQuery = '', jobStatusFilter = '', jobSort = 'new';
+let crewQuery = '', crewRoleFilter = '';
 let schedOffset = 0;
 const crewDetailOpen = {};
 
@@ -311,12 +361,24 @@ function crewStats(id){
   const paid = round2(jobs.filter(j => j.status === 'paid').reduce((s, j) => s + (j.amount || 0), 0));
   const upcomingShifts = db.shifts.filter(s => s.crewId === id && s.date >= todayISO()).length;
   const activeJobs = jobs.filter(j => !['paid', 'payable'].includes(j.status)).length;
-  return { jobs: jobs.length, hours: round2(mins / 60), payable, paid, upcomingShifts, activeJobs };
+  const ot = crewOtTotals(id);
+  return { jobs: jobs.length, hours: round2(mins / 60), payable, paid, upcomingShifts, activeJobs,
+    otHours: round2(ot.otMins / 60), otPay: ot.otPay };
+}
+function filteredCrew(){
+  let list = [...db.crew];
+  if (crewRoleFilter) list = list.filter(c => c.role === crewRoleFilter);
+  if (crewQuery.trim()) {
+    const q = crewQuery.trim().toLowerCase();
+    list = list.filter(c => (c.name + ' ' + (c.phone || '')).toLowerCase().includes(q));
+  }
+  return list;
 }
 function renderCrew(){
-  document.getElementById('crew-list').innerHTML = db.crew.map(c => {
+  document.getElementById('crew-list').innerHTML = filteredCrew().map(c => {
     const open = !!crewDetailOpen[c.id];
     const st = open ? crewStats(c.id) : null;
+    const otLine = st && st.otHours > 0 ? `<div class="stat"><div class="v">${st.otHours}h</div><div class="k">OT hours</div></div><div class="stat"><div class="v">${fmtMoney(st.otPay)}</div><div class="k">OT pay</div></div>` : '';
     return `<div class="card"><div class="row" style="justify-content:space-between">
       <div><h3 style="margin:0">${esc(c.name)}</h3>
       <div class="muted">${c.role === 'worker' ? 'Worker &middot; ' + fmtMoney(c.rate) + '/hr' : 'Quoter &middot; ' + fmtMoney(c.quoteFee) + ' per confirmed quote'} &middot; ${telLink(c.phone)}</div></div>
@@ -332,6 +394,7 @@ function renderCrew(){
         <div class="stat"><div class="v">${fmtMoney(st.payable)}</div><div class="k">Awaiting pay</div></div>
         <div class="stat"><div class="v">${fmtMoney(st.paid)}</div><div class="k">Paid out</div></div>
         <div class="stat"><div class="v">${st.upcomingShifts}</div><div class="k">Upcoming shifts</div></div>
+        ${otLine}
       </div>
       <div class="row" style="margin-top:10px">
         <label style="margin:0">$ /hr <input type="number" id="rate-${c.id}" value="${c.rate}" min="0" step="0.5" style="width:90px"></label>
@@ -488,6 +551,272 @@ function timeLogHtml(j){
 </script>
 <script>
 'use strict';
+// ---------- payroll settings / overtime ----------
+function otSettings(){
+  const s = (db.meta && db.meta.settings) || {};
+  const rate = parseFloat(s.otRate);
+  return {
+    otMode: s.otMode === 'daily' || s.otMode === 'weekly' ? s.otMode : 'none',
+    otRate: (!isNaN(rate) && rate >= 1) ? rate : 1.5
+  };
+}
+function saveSettings(){
+  const mode = document.getElementById('set-otmode').value;
+  const rate = parseFloat(document.getElementById('set-otrate').value);
+  db.meta.settings = {
+    otMode: ['none', 'daily', 'weekly'].includes(mode) ? mode : 'none',
+    otRate: (!isNaN(rate) && rate >= 1) ? rate : 1.5
+  };
+  logAct('Updated payroll settings (OT: ' + db.meta.settings.otMode + ', x' + db.meta.settings.otRate + ')');
+  save(); render();
+}
+function renderSettings(){
+  const el = document.getElementById('set-otmode');
+  if (!el) return;
+  const st = otSettings();
+  el.value = st.otMode;
+  document.getElementById('set-otrate').value = st.otRate;
+}
+function weekStartKey(d){
+  const w = new Date(d); w.setHours(0, 0, 0, 0);
+  w.setDate(w.getDate() - w.getDay());
+  return dayKey(w);
+}
+// OT minutes per job for one crew member. OT is earned on ALL of the crew's
+// logged time per day (or week), then split across their jobs by hours worked.
+function crewOtMins(crewId){
+  const st = otSettings();
+  const out = {};
+  if (st.otMode === 'none' || !crewId) return out;
+  const limit = st.otMode === 'daily' ? 8 * 60 : 40 * 60;
+  const buckets = {};
+  db.timeLogs.filter(t => t.end && t.crewId === crewId).forEach(t => {
+    const mins = logMinutes(t);
+    const key = st.otMode === 'daily' ? dayKey(new Date(t.start)) : weekStartKey(new Date(t.start));
+    (buckets[key] = buckets[key] || []).push({ t, mins });
+  });
+  Object.values(buckets).forEach(list => {
+    const total = list.reduce((s, x) => s + x.mins, 0);
+    const ot = Math.max(0, total - limit);
+    if (!ot) return;
+    list.forEach(x => { out[x.t.jobId] = (out[x.t.jobId] || 0) + ot * (total ? x.mins / total : 0); });
+  });
+  Object.keys(out).forEach(k => { out[k] = Math.round(out[k]); });
+  return out;
+}
+function jobLabor(jobId){
+  const j = jobById(jobId); if (!j) return null;
+  const c = crewById(j.who);
+  const rate = c && typeof c.rate === 'number' ? c.rate : DEFAULT_RATE;
+  const st = otSettings();
+  const logs = logsForJob(jobId).filter(t => t.end);
+  let regMins = 0, otMins = 0;
+  if (logs.length) {
+    const totalMins = logs.reduce((s, t) => s + logMinutes(t), 0);
+    otMins = Math.min(totalMins, Math.round(crewOtMins(j.who)[jobId] || 0));
+    regMins = totalMins - otMins;
+  } else {
+    regMins = Math.round((j.hours || 0) * 60);
+  }
+  const regPay = round2(regMins / 60 * rate);
+  const otPay = round2(otMins / 60 * rate * st.otRate);
+  return { regMins, otMins, rate, otRate: st.otRate, regPay, otPay, total: round2(regPay + otPay) };
+}
+function crewOtTotals(crewId){
+  const st = otSettings();
+  if (st.otMode === 'none') return { otMins: 0, otPay: 0 };
+  const c = crewById(crewId);
+  const rate = c && typeof c.rate === 'number' ? c.rate : DEFAULT_RATE;
+  let otMins = 0;
+  db.jobs.filter(j => j.who === crewId).forEach(j => { otMins += jobLabor(j.id).otMins; });
+  return { otMins, otPay: round2(otMins / 60 * rate * st.otRate) };
+}
+
+// ---------- expenses / pricing / profit ----------
+function expensesForJob(jobId){
+  return (db.expenses || []).filter(e => e.jobId === jobId)
+    .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.created - b.created));
+}
+function materialsCost(jobId){ return round2(expensesForJob(jobId).reduce((s, e) => s + (e.amount || 0), 0)); }
+function addExpense(jobId){
+  const desc = (document.getElementById('ex-desc-' + jobId).value || '').trim();
+  const amt = parseFloat(document.getElementById('ex-amt-' + jobId).value);
+  if (!desc) { alert('Expense description required'); return; }
+  if (isNaN(amt) || amt < 0) { alert('Enter a valid amount'); return; }
+  db.expenses.push({ id: uid(), jobId, desc, amount: round2(amt), date: todayISO(), created: Date.now() });
+  const j = jobById(jobId);
+  logAct('Expense ' + fmtMoney(amt) + ' (' + desc + ') on ' + (j ? j.cust : 'job'));
+  save(); render();
+}
+function delExpense(id){
+  if (!confirm('Delete this expense?')) return;
+  db.expenses = (db.expenses || []).filter(e => e.id !== id);
+  save(); render();
+}
+function setPrice(id, v){
+  const j = jobById(id); if (!j) return;
+  j.price = Math.max(0, parseFloat(v) || 0);
+  save(); render();
+}
+function jobProfit(jobId){
+  const j = jobById(jobId); if (!j) return null;
+  const labor = jobLabor(jobId).total;
+  const materials = materialsCost(jobId);
+  const price = j.price || 0;
+  const profit = round2(price - labor - materials);
+  return { price, labor, materials, profit, margin: price > 0 ? round2(profit / price * 100) : null };
+}
+function costsHtml(j){
+  const exps = expensesForJob(j.id);
+  const labor = jobLabor(j.id);
+  const profit = jobProfit(j.id);
+  const pColor = profit.profit >= 0 ? '#7dffb0' : 'var(--red)';
+  let html = `<div class="timelog print-hide"><div class="trow"><b>Job costs</b>` +
+    `<span class="muted">Labor ${fmtMoney(labor.total)}${labor.otMins ? ' (' + fmtDur(labor.otMins) + ' OT)' : ''} &middot; Materials ${fmtMoney(profit.materials)} &middot; Profit <b style="color:${pColor}">${fmtMoney(profit.profit)}</b></span></div>`;
+  html += `<div class="trow"><label style="margin:0">Customer price $ <input type="number" min="0" step="1" value="${j.price || 0}" style="width:110px" onchange="setPrice('${j.id}', this.value)" aria-label="Customer price for ${esc(j.cust)}"></label></div>`;
+  exps.forEach(e => {
+    html += `<div class="trow"><span>${esc(e.desc)} &middot; ${fmtDate(e.date)}</span><span><b>${fmtMoney(e.amount)}</b> <button class="del" onclick="delExpense('${e.id}')" title="Delete expense" aria-label="Delete expense ${esc(e.desc)}">&times;</button></span></div>`;
+  });
+  html += `<div class="trow"><input id="ex-desc-${j.id}" placeholder="Material / expense" style="flex:1" aria-label="Expense description for ${esc(j.cust)}">` +
+    `<input id="ex-amt-${j.id}" type="number" min="0" step="1" placeholder="$" style="width:90px" aria-label="Expense amount">` +
+    `<button class="ghost" onclick="addExpense('${j.id}')">Add</button></div></div>`;
+  return html;
+}
+
+// ---------- job photos (device storage, downscaled) ----------
+const MAX_PHOTOS = 20;
+const MAX_PHOTO_BYTES = 1500000;
+function photosForJob(jobId){ const j = jobById(jobId); return j && Array.isArray(j.photos) ? j.photos : []; }
+function pushPhoto(jobId, dataUrl){
+  const j = jobById(jobId); if (!j) return false;
+  if (!dataUrl || typeof dataUrl !== 'string' || dataUrl.length > MAX_PHOTO_BYTES) { alert('Photo is too large for device storage.'); return false; }
+  j.photos = j.photos || [];
+  if (j.photos.length >= MAX_PHOTOS) { alert('Photo limit reached for this job (' + MAX_PHOTOS + ').'); return false; }
+  j.photos.push({ id: uid(), dataUrl, ts: Date.now() });
+  logAct('Added photo to ' + j.cust + ' job');
+  save(); return true;
+}
+function attachPhoto(jobId, input){
+  const f = input.files && input.files[0];
+  if (!f) return;
+  const r = new FileReader();
+  r.onload = () => {
+    downscaleImage(r.result, dataUrl => {
+      if (dataUrl && pushPhoto(jobId, dataUrl)) render();
+      input.value = '';
+    });
+  };
+  r.onerror = () => { alert('Could not read that photo.'); input.value = ''; };
+  r.readAsDataURL(f);
+}
+function downscaleImage(dataUrl, cb){
+  try {
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const max = 1024;
+        const scale = Math.min(1, max / Math.max(img.width || 1, img.height || 1));
+        const cv = document.createElement('canvas');
+        cv.width = Math.max(1, Math.round(img.width * scale));
+        cv.height = Math.max(1, Math.round(img.height * scale));
+        cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+        cb(cv.toDataURL('image/jpeg', 0.72));
+      } catch (e) { cb(null); }
+    };
+    img.onerror = () => cb(null);
+    img.src = dataUrl;
+  } catch (e) { cb(null); }
+}
+function delPhoto(jobId, photoId){
+  const j = jobById(jobId); if (!j || !j.photos) return;
+  if (!confirm('Delete this photo?')) return;
+  j.photos = j.photos.filter(p => p.id !== photoId);
+  save(); render();
+}
+function photosHtml(j){
+  const photos = photosForJob(j.id);
+  let html = `<div class="timelog print-hide"><div class="trow"><b>Photos (${photos.length})</b>` +
+    `<label class="file-label" style="padding:6px 12px; font-size:13px">Add photo<input type="file" accept="image/*" style="display:none" onchange="attachPhoto('${j.id}', this)"></label></div>`;
+  if (photos.length) {
+    html += '<div class="row">' + photos.map(p =>
+      `<span style="position:relative; display:inline-block"><img src="${p.dataUrl}" alt="Job site photo" style="width:90px; height:90px; object-fit:cover; border-radius:8px; border:1px solid #2a2a30">` +
+      `<button class="del" style="position:absolute; top:0; right:0; background:#000a" onclick="delPhoto('${j.id}', '${p.id}')" title="Delete photo" aria-label="Delete photo">&times;</button></span>`
+    ).join('') + '</div>';
+  }
+  html += '</div>';
+  return html;
+}
+
+// ---------- data integrity ----------
+function integrityReport(){
+  const issues = [];
+  const crewIds = new Set(db.crew.map(c => c.id));
+  const jobIds = new Set(db.jobs.map(j => j.id));
+  const seen = new Set();
+  [['crew', db.crew], ['jobs', db.jobs], ['shifts', db.shifts], ['timeLogs', db.timeLogs], ['expenses', db.expenses || []]].forEach(pair => {
+    (pair[1] || []).forEach(x => {
+      const k = pair[0] + ':' + x.id;
+      if (seen.has(k)) issues.push('Duplicate id in ' + pair[0]);
+      seen.add(k);
+    });
+  });
+  db.jobs.forEach(j => {
+    if (j.who && !crewIds.has(j.who)) issues.push('Job "' + j.cust + '" points at a removed crew member');
+    if ((j.amount || 0) < 0 || (j.hours || 0) < 0 || (j.price || 0) < 0) issues.push('Negative money/hours on "' + j.cust + '"');
+  });
+  (db.expenses || []).forEach(e => { if (!jobIds.has(e.jobId)) issues.push('Expense "' + e.desc + '" points at a deleted job'); });
+  db.timeLogs.forEach(t => { if (!jobIds.has(t.jobId)) issues.push('Time entry points at a deleted job'); });
+  db.shifts.forEach(s => { if (!crewIds.has(s.crewId)) issues.push('Shift on ' + s.date + ' points at a removed crew member'); });
+  return { ok: issues.length === 0, count: issues.length, issues: issues.slice(0, 25) };
+}
+function renderIntegrity(){
+  const el = document.getElementById('integrity');
+  if (!el) return;
+  const r = integrityReport();
+  el.innerHTML = r.ok
+    ? '<span class="muted">Data check: OK &middot; ' + db.jobs.length + ' jobs, ' + db.crew.length + ' crew, ' + (db.expenses || []).length + ' expenses, ' + db.timeLogs.length + ' time entries</span>'
+    : '<div class="warn">Data check found ' + r.count + ' issue(s):<br>' + r.issues.map(esc).join('<br>') + '</div>';
+}
+
+// ---------- invoice ----------
+function openInvoice(jobId){
+  const j = jobById(jobId); if (!j) return;
+  const labor = jobLabor(jobId);
+  const exps = expensesForJob(jobId);
+  const due = (j.price || 0) > 0 ? j.price : round2(labor.total + materialsCost(jobId));
+  const rows = [];
+  if (labor.regMins > 0) rows.push({ desc: 'Labor: ' + fmtDur(labor.regMins) + ' @ ' + fmtMoney(labor.rate) + '/hr', amt: labor.regPay });
+  if (labor.otMins > 0) rows.push({ desc: 'Overtime: ' + fmtDur(labor.otMins) + ' @ ' + fmtMoney(labor.rate) + ' x ' + labor.otRate, amt: labor.otPay });
+  exps.forEach(e => rows.push({ desc: 'Materials: ' + e.desc + (e.date ? ' (' + fmtDate(e.date) + ')' : ''), amt: e.amount }));
+  document.getElementById('invoice-root').innerHTML = `
+    <div class="card print-hide"><div class="row" style="justify-content:space-between">
+      <b>Invoice preview</b>
+      <div class="row"><button class="ghost" onclick="printInvoice()">Print</button><button class="ghost" onclick="closeInvoice()">Close</button></div>
+    </div></div>
+    <div class="invoice">
+      <h2>QUONSET PLACE</h2>
+      <div class="inv-sub">Job invoice &middot; #${esc(String(j.id).slice(-6).toUpperCase())} &middot; ${fmtDateLong(j.date || todayISO())}</div>
+      <table>
+        <tr><td><b>Bill to</b></td><td>${esc(j.cust)}${j.addr ? '<br>' + esc(j.addr) : ''}${j.phone ? '<br>' + esc(j.phone) : ''}</td></tr>
+        <tr><td><b>Job</b></td><td>${j.type === 'quote' ? 'Quote visit' : 'Build'}${j.notes ? ' &middot; ' + esc(j.notes) : ''}</td></tr>
+        <tr><td><b>Status</b></td><td>${esc(statusMeta(j.status).label)}</td></tr>
+      </table>
+      <table>
+        <tr><th>Description</th><th class="num">Amount</th></tr>
+        ${rows.map(r => `<tr><td>${esc(r.desc)}</td><td class="num">${fmtMoney(r.amt)}</td></tr>`).join('') || '<tr><td>Nothing billed yet</td><td class="num">$0.00</td></tr>'}
+        <tr class="total-row"><td>Total due</td><td class="num">${fmtMoney(due)}</td></tr>
+      </table>
+      <div class="inv-foot">Crew pay for this job: ${fmtMoney(j.amount || labor.total)} &middot; released only after customer confirmation.<br>Quonset Place &middot; pay in full on completion.</div>
+    </div>`;
+  try { document.body.classList.add('invoicing'); } catch (e) {}
+  if (typeof window !== 'undefined' && window.scrollTo) window.scrollTo(0, 0);
+  logAct('Opened invoice for ' + j.cust);
+}
+function closeInvoice(){ try { document.body.classList.remove('invoicing'); } catch (e) {} }
+function printInvoice(){ if (typeof window !== 'undefined' && window.print) window.print(); }
+</script>
+<script>
+'use strict';
 // ---------- schedule ----------
 function refreshShiftCrew(){
   const sel = document.getElementById('s-crew');
@@ -598,7 +927,7 @@ function renderJobs(){
     const hoursCtl = j.type === 'build'
       ? (hasLogs
         ? `<label style="margin:0">Hours <b>${j.hours}h</b> <span class="muted">(from time log)</span></label>`
-        : `<label style="margin:0">Hours <input type="number" min="0" step="0.5" value="${j.hours}" style="width:80px" onchange="setHours('${j.id}', this.value)"></label>`)
+        : `<label style="margin:0">Hours <input type="number" min="0" step="0.5" value="${j.hours}" style="width:80px" onchange="setHours('${j.id}', this.value)" aria-label="Hours for ${esc(j.cust)}"></label>`)
       : '';
     return `<div class="card">
       <div class="row" style="justify-content:space-between">
@@ -610,14 +939,17 @@ function renderJobs(){
       ${j.type === 'build' ? timeLogHtml(j) : ''}
       <div class="row print-hide" style="margin-top:10px">
         ${hoursCtl}
-        <label style="margin:0">Pay $ <input type="number" min="0" step="1" value="${j.amount}" style="width:100px" onchange="setAmount('${j.id}', this.value)"></label>
-        <select onchange="setStatus('${j.id}', this.value)">
+        <label style="margin:0">Pay $ <input type="number" min="0" step="1" value="${j.amount}" style="width:100px" onchange="setAmount('${j.id}', this.value)" aria-label="Crew pay for ${esc(j.cust)}"></label>
+        <select onchange="setStatus('${j.id}', this.value)" aria-label="Job status for ${esc(j.cust)}">
           ${STATUS.map(s => `<option value="${s.key}"${s.key === j.status ? ' selected' : ''}>${s.label}</option>`).join('')}
         </select>
         ${j.type === 'quote' ? `<button class="ghost" onclick="convertToBuild('${j.id}')">Convert to build</button>` : ''}
         ${j.status === 'done' ? `<button class="green" onclick="confirmAndPayable('${j.id}')">Confirm + payable</button>` : ''}
         <button class="ghost" onclick="dupJob('${j.id}')">Duplicate</button>
+        <button class="ghost" onclick="openInvoice('${j.id}')">Invoice</button>
       </div>
+      ${costsHtml(j)}
+      ${photosHtml(j)}
       ${isOverdue(j) ? `<div class="warn print-hide">Overdue: job date ${fmtDate(j.date)} has passed.</div>` : ''}
     </div>`;
   }).join('') || '<div class="muted">No jobs match.</div>';
@@ -660,6 +992,10 @@ function renderDash(){
     return { name: c.name, hours: round2(mins / 60), earned };
   }).filter(x => x.hours > 0 || x.earned > 0).sort((a, b) => b.hours - a.hours).slice(0, 8);
   const activity = db.activity.slice(0, 12);
+  const margins = db.jobs.map(j => ({ j, p: jobProfit(j.id) }))
+    .filter(x => x.p && (x.p.price > 0 || x.p.labor > 0 || x.p.materials > 0))
+    .sort((a, b) => b.p.profit - a.p.profit);
+  const totalProfit = round2(margins.reduce((s, x) => s + x.p.profit, 0));
   document.getElementById('p-dash').innerHTML = `
     <div class="card"><div class="row">${chips}</div></div>
     <div class="grid2">
@@ -674,6 +1010,12 @@ function renderDash(){
         `<div class="row" style="justify-content:space-between; padding:6px 0"><b>${esc(n)}</b><span class="money">${fmtMoney(a)}</span></div>`).join('')
         : '<div class="muted">Nobody owed right now.</div>'}
       ${Object.keys(byPerson).length ? `<div style="margin-top:10px" class="print-hide"><button class="ghost" onclick="exportPayrollCsv()">Payroll CSV</button></div>` : ''}
+    </div>
+    <div class="card"><h3>Job margins</h3>
+      ${margins.length ? margins.slice(0, 8).map(x =>
+        `<div class="row" style="justify-content:space-between; padding:6px 0"><span><b>${esc(x.j.cust)}</b> <span class="muted">price ${fmtMoney(x.p.price)} &middot; labor ${fmtMoney(x.p.labor)} &middot; materials ${fmtMoney(x.p.materials)}${x.p.margin !== null ? ' &middot; ' + x.p.margin + '%' : ''}</span></span><span class="money" style="font-size:18px; color:${x.p.profit >= 0 ? '#7dffb0' : 'var(--red)'}">${fmtMoney(x.p.profit)}</span></div>`).join('')
+        + `<div class="row" style="justify-content:space-between; padding:6px 0; border-top:1px solid #2a2a30"><b>Total margin</b><span class="money" style="color:${totalProfit >= 0 ? '#7dffb0' : 'var(--red)'}">${fmtMoney(totalProfit)}</span></div>`
+        : '<div class="muted">Set a customer price and log costs on a job to see its margin.</div>'}
     </div>
     <div class="card"><h3>Crew hours leaderboard</h3>
       ${hoursBoard.length ? hoursBoard.map((x, i) =>
@@ -719,8 +1061,23 @@ function validateImport(obj){
     date: String(j.date || ''), notes: String(j.notes || ''),
     status: STATUS.some(s => s.key === j.status) ? j.status : 'assigned',
     hours: Math.max(0, parseFloat(j.hours) || 0), amount: Math.max(0, parseFloat(j.amount) || 0),
+    price: Math.max(0, parseFloat(j.price) || 0),
+    photos: Array.isArray(j.photos) ? j.photos.filter(p => p && typeof p.dataUrl === 'string' && p.dataUrl.length < 2000000).slice(0, 20).map(p => ({
+      id: String(p.id || Math.random().toString(36).slice(2)), dataUrl: p.dataUrl, ts: p.ts || Date.now()
+    })) : [],
     created: j.created || Date.now(), paidAt: j.paidAt || 0
   }));
+  if (Array.isArray(obj.expenses)) clean.expenses = obj.expenses.filter(e => e && e.id && e.jobId && e.desc).map(e => ({
+    id: String(e.id), jobId: String(e.jobId), desc: String(e.desc),
+    amount: Math.max(0, parseFloat(e.amount) || 0),
+    date: String(e.date || ''), created: e.created || Date.now()
+  }));
+  if (obj.meta && obj.meta.settings && typeof obj.meta.settings === 'object') {
+    const m = ['none', 'daily', 'weekly'].includes(obj.meta.settings.otMode) ? obj.meta.settings.otMode : 'none';
+    const r = parseFloat(obj.meta.settings.otRate);
+    clean.meta.settings = { otMode: m, otRate: (!isNaN(r) && r >= 1) ? r : 1.5 };
+  }
+  return clean;
   if (Array.isArray(obj.shifts)) clean.shifts = obj.shifts.filter(s => s && s.id && s.crewId && s.date && s.start && s.end).map(s => ({
     id: String(s.id), crewId: String(s.crewId), jobId: s.jobId ? String(s.jobId) : null,
     date: String(s.date), start: String(s.start), end: String(s.end), notes: String(s.notes || '')
@@ -780,10 +1137,16 @@ function render(){
   renderJobs();
   renderSched();
   renderDash();
+  renderSettings();
+  renderIntegrity();
 }
 
 document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => {
-  document.querySelectorAll('.tab').forEach(x => x.classList.toggle('active', x === t));
+  document.querySelectorAll('.tab').forEach(x => {
+    const on = x === t;
+    x.classList.toggle('active', on);
+    x.setAttribute('aria-selected', on ? 'true' : 'false');
+  });
   document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === 'p-' + t.dataset.t));
 }));
 
@@ -795,7 +1158,13 @@ try { globalThis.__qp = { addCrew, addJob, addShift, clockIn, clockOut, delTimeL
   findOverlaps, logMinutes, jobLogMinutes, jobHasLogs, fmtMoney, fmtDur, fmtTime24, minsBetween, migrate,
   exportJsonString, validateImport, weekStart, dayKey, paidByDay, crewStats, isOverdue,
   convertToBuild, dupJob, confirmAndPayable,
-  _db: () => db, _reset: d => { db = d; save(); } }; } catch (e) {}
+  addExpense, delExpense, setPrice, expensesForJob, materialsCost, jobProfit, jobLabor, crewOtMins, crewOtTotals,
+  otSettings, saveSettings, renderSettings,
+  pushPhoto, delPhoto, photosForJob, attachPhoto,
+  integrityReport, renderIntegrity, filteredCrew,
+  openInvoice, closeInvoice, printInvoice,
+  setCrewFilter: (q, r) => { crewQuery = q || ''; crewRoleFilter = r || ''; },
+  _db: () => db, _reset: d => { db = d; migrate(); save(); } }; } catch (e) {}
 </script>
 </body>
 </html>
