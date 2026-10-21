@@ -399,6 +399,27 @@ function delJob(id){
   logAct('Deleted job for ' + j.cust);
   save(); render();
 }
+function convertToBuild(id){
+  const j = jobById(id); if (!j || j.type !== 'quote') return;
+  if (!confirm('Convert this quote into a build job for ' + j.cust + '?')) return;
+  db.jobs.push({ id: uid(), cust: j.cust, phone: j.phone, addr: j.addr, type: 'build',
+    who: j.who, date: j.date, notes: j.notes, status: 'assigned',
+    hours: 0, amount: 0, created: Date.now(), paidAt: 0 });
+  j.status = 'done';
+  logAct('Converted quote to build job for ' + j.cust);
+  save(); render();
+}
+function dupJob(id){
+  const j = jobById(id); if (!j) return;
+  db.jobs.push({ id: uid(), cust: j.cust, phone: j.phone, addr: j.addr, type: j.type,
+    who: j.who, date: '', notes: j.notes, status: 'assigned',
+    hours: 0, amount: j.type === 'quote' ? j.amount : 0, created: Date.now(), paidAt: 0 });
+  logAct('Duplicated job for ' + j.cust);
+  save(); render();
+}
+function isOverdue(j){
+  return j.date && j.date < todayISO() && !['done', 'customer confirmed', 'payable', 'paid'].includes(j.status);
+}
 
 // ---------- time logs ----------
 function logMinutes(t){ return t && t.end ? Math.max(0, Math.round((t.end - t.start) / 60000)) : 0; }
@@ -582,7 +603,10 @@ function renderJobs(){
         <select onchange="setStatus('${j.id}', this.value)">
           ${STATUS.map(s => `<option value="${s.key}"${s.key === j.status ? ' selected' : ''}>${s.label}</option>`).join('')}
         </select>
+        ${j.type === 'quote' ? `<button class="ghost" onclick="convertToBuild('${j.id}')">Convert to build</button>` : ''}
+        <button class="ghost" onclick="dupJob('${j.id}')">Duplicate</button>
       </div>
+      ${isOverdue(j) ? `<div class="warn print-hide">Overdue: job date ${fmtDate(j.date)} has passed.</div>` : ''}
     </div>`;
   }).join('') || '<div class="muted">No jobs match.</div>';
 }
@@ -757,7 +781,8 @@ render();
 try { globalThis.__qp = { addCrew, addJob, addShift, clockIn, clockOut, delTimeLog, setStatus, setHours, setAmount,
   updateCrew, logAct, exportPayrollCsvString,
   findOverlaps, logMinutes, jobLogMinutes, jobHasLogs, fmtMoney, fmtDur, fmtTime24, minsBetween, migrate,
-  exportJsonString, validateImport, weekStart, dayKey, paidByDay, crewStats,
+  exportJsonString, validateImport, weekStart, dayKey, paidByDay, crewStats, isOverdue,
+  convertToBuild, dupJob,
   _db: () => db, _reset: d => { db = d; save(); } }; } catch (e) {}
 </script>
 </body>

@@ -219,5 +219,25 @@ qp._reset({ crew: [{ id: 'c9', name: 'Legacy', role: 'worker', rate: 25 }], jobs
 qp.migrate();
 ok(qp._db().crew[0].quoteFee === 25, 'migrate backfills quoteFee');
 
+// ---- quote -> build conversion, duplication, overdue ----
+reset();
+setInput('c-name', 'QW'); setInput('c-role', 'quoter'); setInput('c-rate', '25'); qp.addCrew();
+const qw = qp._db().crew[0].id;
+setInput('j-cust', 'Convert Me'); setInput('j-type', 'quote'); setInput('j-who', qw); setInput('j-date', '2001-01-01'); qp.addJob();
+const cq = qp._db().jobs[0];
+ok(qp.isOverdue(cq), 'past-dated open job is overdue');
+qp.convertToBuild(cq.id);
+const after = qp._db().jobs;
+ok(after.length === 2, 'convertToBuild adds a build job');
+ok(after.find(j => j.id === cq.id).status === 'done', 'quote marked done after conversion');
+ok(after.find(j => j.type === 'build' && j.cust === 'Convert Me'), 'build job carries customer over');
+qp.dupJob(cq.id);
+ok(qp._db().jobs.length === 3 && qp._db().jobs[2].status === 'assigned', 'dupJob copies job as assigned');
+const doneJ = qp._db().jobs[2];
+qp.setStatus(doneJ.id, 'done');
+ok(!qp.isOverdue(qp._db().jobs.find(j => j.id === doneJ.id)), 'done job with past date not overdue');
+setInput('j-cust', 'Future'); setInput('j-type', 'build'); setInput('j-who', qw); setInput('j-date', '2099-01-01'); qp.addJob();
+ok(!qp.isOverdue(qp._db().jobs[qp._db().jobs.length - 1]), 'future job not overdue');
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
