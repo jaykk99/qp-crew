@@ -399,8 +399,19 @@ function delJob(id){
   logAct('Deleted job for ' + j.cust);
   save(); render();
 }
-function convertToBuild(id){
-  const j = jobById(id); if (!j || j.type !== 'quote') return;
+function confirmAndPayable(id){
+  const j = jobById(id); if (!j) return;
+  const preview = j.type === 'build' ? buildAmount(j) : j.amount;
+  if (!confirm('Customer confirmed ' + j.cust + '? This makes ' + fmtMoney(preview) + ' payable to ' + crewName(j.who) + '.')) return;
+  j.status = 'customer confirmed';
+  logAct(j.cust + ' job -> customer confirmed');
+  j.status = 'payable';
+  if (j.type === 'build' && !j.amount) j.amount = buildAmount(j);
+  j.paidAt = 0;
+  logAct(j.cust + ' job -> payable (' + fmtMoney(j.amount) + ')');
+  save(); render();
+}
+function convertToBuild(id){  const j = jobById(id); if (!j || j.type !== 'quote') return;
   if (!confirm('Convert this quote into a build job for ' + j.cust + '?')) return;
   db.jobs.push({ id: uid(), cust: j.cust, phone: j.phone, addr: j.addr, type: 'build',
     who: j.who, date: j.date, notes: j.notes, status: 'assigned',
@@ -604,6 +615,7 @@ function renderJobs(){
           ${STATUS.map(s => `<option value="${s.key}"${s.key === j.status ? ' selected' : ''}>${s.label}</option>`).join('')}
         </select>
         ${j.type === 'quote' ? `<button class="ghost" onclick="convertToBuild('${j.id}')">Convert to build</button>` : ''}
+        ${j.status === 'done' ? `<button class="green" onclick="confirmAndPayable('${j.id}')">Confirm + payable</button>` : ''}
         <button class="ghost" onclick="dupJob('${j.id}')">Duplicate</button>
       </div>
       ${isOverdue(j) ? `<div class="warn print-hide">Overdue: job date ${fmtDate(j.date)} has passed.</div>` : ''}
@@ -782,7 +794,7 @@ try { globalThis.__qp = { addCrew, addJob, addShift, clockIn, clockOut, delTimeL
   updateCrew, logAct, exportPayrollCsvString,
   findOverlaps, logMinutes, jobLogMinutes, jobHasLogs, fmtMoney, fmtDur, fmtTime24, minsBetween, migrate,
   exportJsonString, validateImport, weekStart, dayKey, paidByDay, crewStats, isOverdue,
-  convertToBuild, dupJob,
+  convertToBuild, dupJob, confirmAndPayable,
   _db: () => db, _reset: d => { db = d; save(); } }; } catch (e) {}
 </script>
 </body>

@@ -239,5 +239,18 @@ ok(!qp.isOverdue(qp._db().jobs.find(j => j.id === doneJ.id)), 'done job with pas
 setInput('j-cust', 'Future'); setInput('j-type', 'build'); setInput('j-who', qw); setInput('j-date', '2099-01-01'); qp.addJob();
 ok(!qp.isOverdue(qp._db().jobs[qp._db().jobs.length - 1]), 'future job not overdue');
 
+// ---- confirm + payable shortcut ----
+reset();
+setInput('c-name', 'CW'); setInput('c-role', 'worker'); setInput('c-rate', '20'); qp.addCrew();
+const cw = qp._db().crew[0].id;
+setInput('j-cust', 'Shortcut'); setInput('j-type', 'build'); setInput('j-who', cw); qp.addJob();
+const sj = qp._db().jobs[0].id;
+qp.setHours(sj, '3');
+qp.setStatus(sj, 'done');
+qp.confirmAndPayable(sj);
+const sjd = qp._db().jobs[0];
+ok(sjd.status === 'payable' && sjd.amount === 60, 'confirmAndPayable jumps done -> payable with computed amount');
+ok(qp._db().activity.some(a => a.text.includes('customer confirmed')), 'shortcut logs both transitions');
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
