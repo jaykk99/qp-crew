@@ -87,6 +87,7 @@
         <div><label>Phone</label><input id="c-phone" placeholder="204-..."></div>
         <div><label>Role</label><select id="c-role"><option value="quoter">Quoter</option><option value="worker">Worker</option></select></div>
         <div><label>Rate ($/hr, workers)</label><input id="c-rate" type="number" value="25" min="0"></div>
+        <div><label>Quote fee ($/confirmed quote, quoters)</label><input id="c-qfee" type="number" value="25" min="0"></div>
       </div>
       <div style="margin-top:12px"><button onclick="addCrew()">Add</button></div>
     </div>
@@ -178,7 +179,7 @@ const STATUS = [
   { key: 'paid', label: 'Paid', cls: 'paid' },
 ];
 
-function freshDb(){ return { crew: [], jobs: [], shifts: [], timeLogs: [], meta: { version: 2 } }; }
+function freshDb(){ return { crew: [], jobs: [], shifts: [], timeLogs: [], activity: [], meta: { version: 2 } }; }
 function load(){ try { return JSON.parse(localStorage.getItem(DB_KEY)); } catch (e) { return null; } }
 function save(){ try { localStorage.setItem(DB_KEY, JSON.stringify(db)); } catch (e) { alert('Could not save: storage full or blocked.'); } }
 function migrate(){
@@ -187,7 +188,12 @@ function migrate(){
   if (!Array.isArray(db.jobs)) db.jobs = [];
   if (!Array.isArray(db.shifts)) db.shifts = [];
   if (!Array.isArray(db.timeLogs)) db.timeLogs = [];
+  if (!Array.isArray(db.activity)) db.activity = [];
   if (!db.meta || typeof db.meta !== 'object') db.meta = { version: 2 };
+  db.crew.forEach(c => {
+    if (typeof c.rate !== 'number') c.rate = DEFAULT_RATE;
+    if (typeof c.quoteFee !== 'number') c.quoteFee = DEFAULT_RATE;
+  });
   db.jobs.forEach(j => {
     if (typeof j.hours !== 'number') j.hours = 0;
     if (typeof j.amount !== 'number') j.amount = 0;
@@ -258,16 +264,35 @@ const pill = key => { const m = statusMeta(key); return `<span class="pill p-${m
 </script>
 <script>
 'use strict';
+function logAct(text){
+  db.activity.unshift({ ts: Date.now(), text: String(text || '') });
+  if (db.activity.length > 200) db.activity.length = 200;
+}
+
 // ---------- crew ----------
 function addCrew(){
   const name = document.getElementById('c-name').value.trim();
   if (!name) { alert('Name required'); return; }
   const rate = parseFloat(document.getElementById('c-rate').value);
+  const qfee = parseFloat(document.getElementById('c-qfee').value);
+  const role = document.getElementById('c-role').value;
   db.crew.push({ id: uid(), name, phone: document.getElementById('c-phone').value.trim(),
-    role: document.getElementById('c-role').value,
-    rate: (isNaN(rate) || rate < 0) ? DEFAULT_RATE : rate, created: Date.now() });
+    role,
+    rate: (isNaN(rate) || rate < 0) ? DEFAULT_RATE : rate,
+    quoteFee: (isNaN(qfee) || qfee < 0) ? DEFAULT_RATE : qfee,
+    created: Date.now() });
   document.getElementById('c-name').value = ''; document.getElementById('c-phone').value = '';
+  logAct('Added crew member ' + name + ' (' + role + ')');
   save(); render();
+}
+function updateCrew(id){
+  const c = crewById(id); if (!c) return;
+  const rate = parseFloat(document.getElementById('rate-' + id).value);
+  const qfee = parseFloat(document.getElementById('qfee-' + id).value);
+  if (!isNaN(rate) && rate >= 0) c.rate = rate;
+  if (!isNaN(qfee) && qfee >= 0) c.quoteFee = qfee;
+  logAct('Updated pay for ' + c.name);
+  save(); renderCrew();
 }
 function delCrew(id){
   const c = crewById(id);
@@ -275,6 +300,7 @@ function delCrew(id){
   const linked = db.jobs.filter(j => j.who === id).length + db.shifts.filter(s => s.crewId === id).length;
   if (!confirm('Remove ' + c.name + (linked ? ' (' + linked + ' linked job(s)/shift(s) will keep the name as Unknown)' : '') + '?')) return;
   db.crew = db.crew.filter(x => x.id !== id);
+  logAct('Removed crew member ' + c.name);
   save(); render();
 }
 function toggleCrewDetail(id){ crewDetailOpen[id] = !crewDetailOpen[id]; renderCrew(); }
@@ -293,7 +319,7 @@ function renderCrew(){
     const st = open ? crewStats(c.id) : null;
     return `<div class="card"><div class="row" style="justify-content:space-between">
       <div><h3 style="margin:0">${esc(c.name)}</h3>
-      <div class="muted">${c.role === 'worker' ? 'Worker &middot; ' + fmtMoney(c.rate) + '/hr' : 'Quoter &middot; paid per confirmed quote'} &middot; ${telLink(c.phone)}</div></div>
+      <div class="muted">${c.role === 'worker' ? 'Worker &middot; ' + fmtMoney(c.rate) + '/hr' : 'Quoter &middot; ' + fmtMoney(c.quoteFee) + ' per confirmed quote'} &middot; ${telLink(c.phone)}</div></div>
       <div class="row">
         <button class="ghost" onclick="toggleCrewDetail('${c.id}')">${open ? 'Hide' : 'Details'}</button>
         <button class="del" onclick="delCrew('${c.id}')" title="Remove">&times;</button>
@@ -306,6 +332,11 @@ function renderCrew(){
         <div class="stat"><div class="v">${fmtMoney(st.payable)}</div><div class="k">Awaiting pay</div></div>
         <div class="stat"><div class="v">${fmtMoney(st.paid)}</div><div class="k">Paid out</div></div>
         <div class="stat"><div class="v">${st.upcomingShifts}</div><div class="k">Upcoming shifts</div></div>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <label style="margin:0">$ /hr <input type="number" id="rate-${c.id}" value="${c.rate}" min="0" step="0.5" style="width:90px"></label>
+        <label style="margin:0">Quote fee $ <input type="number" id="qfee-${c.id}" value="${c.quoteFee}" min="0" step="1" style="width:90px"></label>
+        <button class="ghost" onclick="updateCrew('${c.id}')">Save pay</button>
       </div>` : ''}
     </div>`;
   }).join('') || '<div class="muted">No crew yet.</div>';
@@ -321,12 +352,17 @@ function addJob(){
   const who = document.getElementById('j-who').value;
   if (!cust || !who) { alert('Customer and crew member required'); return; }
   const date = document.getElementById('j-date').value;
+  const type = document.getElementById('j-type').value;
+  const asg = crewById(who);
   db.jobs.push({ id: uid(), cust, phone: document.getElementById('j-phone').value.trim(),
-    addr: document.getElementById('j-addr').value.trim(), type: document.getElementById('j-type').value,
+    addr: document.getElementById('j-addr').value.trim(), type,
     who, date: date || '', notes: document.getElementById('j-notes').value.trim(),
-    status: 'assigned', hours: 0, amount: 0, created: Date.now(), paidAt: 0 });
+    status: 'assigned', hours: 0,
+    amount: type === 'quote' ? (asg && typeof asg.quoteFee === 'number' ? asg.quoteFee : DEFAULT_RATE) : 0,
+    created: Date.now(), paidAt: 0 });
   ['j-cust', 'j-phone', 'j-addr', 'j-notes'].forEach(i => document.getElementById(i).value = '');
   document.getElementById('j-date').value = '';
+  logAct('Created ' + type + ' job for ' + cust + ' (' + crewName(who) + ')');
   save(); render();
 }
 function buildAmount(job){
@@ -340,6 +376,7 @@ function setStatus(id, s){
   if (s === 'payable' && j.type === 'build' && !j.amount) j.amount = buildAmount(j);
   if (s === 'paid' && !j.paidAt) j.paidAt = Date.now();
   if (s !== 'paid') j.paidAt = 0;
+  logAct(j.cust + ' job -> ' + s);
   save(); render();
 }
 function setHours(id, h){
@@ -359,6 +396,7 @@ function delJob(id){
   if (!confirm('Delete job for ' + j.cust + '? Its time logs go with it.')) return;
   db.jobs = db.jobs.filter(x => x.id !== id);
   db.timeLogs = db.timeLogs.filter(t => t.jobId !== id);
+  logAct('Deleted job for ' + j.cust);
   save(); render();
 }
 
@@ -377,6 +415,7 @@ function clockIn(jobId){
   if (openLog(jobId)) { alert('Already clocked in on this job. Clock out first.'); return; }
   db.timeLogs.push({ id: uid(), jobId, crewId: j.who, start: Date.now(), end: null });
   if (j.status === 'assigned') j.status = 'in progress';
+  logAct(crewName(j.who) + ' clocked in on ' + j.cust);
   save(); render();
 }
 function clockOut(jobId){
@@ -386,6 +425,7 @@ function clockOut(jobId){
   t.end = Date.now();
   if (t.end <= t.start) t.end = t.start + 60000;
   syncJobHours(j);
+  logAct(crewName(j.who) + ' clocked out on ' + j.cust + ' (' + fmtDur(logMinutes(t)) + ')');
   save(); render();
 }
 function delTimeLog(id){
@@ -455,6 +495,7 @@ function addShift(){
   if (clashes.length && !confirm(crewName(crewId) + ' already has a shift overlapping ' + fmtTime24(start) + ' - ' + fmtTime24(end) + ' that day. Add anyway?')) return;
   db.shifts.push(draft);
   document.getElementById('s-notes').value = '';
+  logAct('Scheduled ' + crewName(crewId) + ' ' + fmtDate(date) + ' ' + fmtTime24(start) + '-' + fmtTime24(end));
   save(); render();
 }
 function delShift(id){
@@ -577,6 +618,12 @@ function renderDash(){
       <div class="bar" style="height:${Math.max(3, Math.round(c.total / max * 90))}px"></div>
       <div class="bar-lab">${c.label}</div></div>`).join('');
   const upcoming = db.shifts.filter(s => s.date >= todayISO()).sort((a, b) => String(a.date).localeCompare(String(b.date)) || String(a.start).localeCompare(String(b.start))).slice(0, 5);
+  const hoursBoard = db.crew.map(c => {
+    const mins = db.timeLogs.filter(t => t.crewId === c.id && t.end).reduce((s, t) => s + logMinutes(t), 0);
+    const earned = round2(db.jobs.filter(j => j.who === c.id && ['payable', 'paid'].includes(j.status)).reduce((s, j) => s + (j.amount || 0), 0));
+    return { name: c.name, hours: round2(mins / 60), earned };
+  }).filter(x => x.hours > 0 || x.earned > 0).sort((a, b) => b.hours - a.hours).slice(0, 8);
+  const activity = db.activity.slice(0, 12);
   document.getElementById('p-dash').innerHTML = `
     <div class="card"><div class="row">${chips}</div></div>
     <div class="grid2">
@@ -590,13 +637,23 @@ function renderDash(){
       ${Object.keys(byPerson).length ? Object.entries(byPerson).map(([n, a]) =>
         `<div class="row" style="justify-content:space-between; padding:6px 0"><b>${esc(n)}</b><span class="money">${fmtMoney(a)}</span></div>`).join('')
         : '<div class="muted">Nobody owed right now.</div>'}
+      ${Object.keys(byPerson).length ? `<div style="margin-top:10px" class="print-hide"><button class="ghost" onclick="exportPayrollCsv()">Payroll CSV</button></div>` : ''}
+    </div>
+    <div class="card"><h3>Crew hours leaderboard</h3>
+      ${hoursBoard.length ? hoursBoard.map((x, i) =>
+        `<div class="row" style="justify-content:space-between; padding:6px 0"><span><b>#${i + 1}</b> ${esc(x.name)}</span><span class="muted">${x.hours}h logged &middot; ${fmtMoney(x.earned)} earned</span></div>`).join('')
+        : '<div class="muted">No logged hours yet. Clock in on a build job to start.</div>'}
     </div>
     <div class="card"><h3>Upcoming shifts</h3>
       ${upcoming.length ? upcoming.map(s => `<div class="row" style="padding:4px 0"><b>${fmtDate(s.date)}</b><span>${fmtTime24(s.start)} - ${fmtTime24(s.end)}</span><span>${esc(crewName(s.crewId))}</span>${s.jobId && jobById(s.jobId) ? `<span class="muted">${esc(jobById(s.jobId).cust)}</span>` : ''}</div>`).join('')
         : '<div class="muted">Nothing scheduled. Add shifts on the Schedule tab.</div>'}
     </div>
     <div class="card"><h3>Active jobs: ${active}</h3>
-      <div class="muted">Clock in on a build job to log hours. Move a job to "Customer Confirmed" then "Payable" once the customer signs off. Pay from the "Who gets paid" list, then mark "Paid".</div></div>`;
+      <div class="muted">Clock in on a build job to log hours. Move a job to "Customer Confirmed" then "Payable" once the customer signs off. Pay from the "Who gets paid" list, then mark "Paid".</div></div>
+    <div class="card"><h3>Recent activity</h3>
+      ${activity.length ? activity.map(a => `<div class="row" style="padding:4px 0"><span class="muted">${fmtClock(a.ts)}</span><span>${esc(a.text)}</span></div>`).join('')
+        : '<div class="muted">Nothing yet.</div>'}
+    </div>`;
 }
 
 // ---------- backup / import ----------
@@ -616,7 +673,9 @@ function validateImport(obj){
   clean.crew = obj.crew.filter(c => c && c.id && c.name).map(c => ({
     id: String(c.id), name: String(c.name), phone: String(c.phone || ''),
     role: c.role === 'worker' ? 'worker' : 'quoter',
-    rate: Math.max(0, parseFloat(c.rate) || DEFAULT_RATE), created: c.created || Date.now()
+    rate: Math.max(0, parseFloat(c.rate) || DEFAULT_RATE),
+    quoteFee: Math.max(0, parseFloat(c.quoteFee) || DEFAULT_RATE),
+    created: c.created || Date.now()
   }));
   clean.jobs = obj.jobs.filter(j => j && j.id && j.cust).map(j => ({
     id: String(j.id), cust: String(j.cust), phone: String(j.phone || ''), addr: String(j.addr || ''),
@@ -634,6 +693,9 @@ function validateImport(obj){
     id: String(t.id), jobId: String(t.jobId), crewId: String(t.crewId || ''),
     start: Number(t.start) || Date.now(), end: t.end ? Number(t.end) : null
   }));
+  if (Array.isArray(obj.activity)) clean.activity = obj.activity.filter(a => a && a.ts).map(a => ({
+    ts: Number(a.ts) || Date.now(), text: String(a.text || '')
+  })).slice(0, 200);
   return clean;
 }
 function importFile(input){
@@ -645,6 +707,7 @@ function importFile(input){
       const clean = validateImport(JSON.parse(reader.result));
       if (!confirm('Replace all current data with this backup (' + clean.crew.length + ' crew, ' + clean.jobs.length + ' jobs)?')) return;
       db = clean; migrate(); save(); render();
+      logAct('Imported backup (' + clean.crew.length + ' crew, ' + clean.jobs.length + ' jobs)'); save();
       alert('Backup imported.');
     } catch (e) { alert('Import failed: ' + e.message); }
     input.value = '';
@@ -654,7 +717,24 @@ function importFile(input){
 function clearAll(){
   if (!confirm('Erase ALL crew, jobs, shifts and time logs on this device? This cannot be undone.')) return;
   if (!confirm('Really erase everything? Download a backup first if you need it.')) return;
-  db = freshDb(); save(); render();
+  db = freshDb(); logAct('Erased all data'); save(); render();
+}
+
+// ---------- payroll CSV ----------
+function exportPayrollCsvString(){
+  const rows = [['Customer', 'Crew', 'Type', 'Date', 'Status', 'Amount']];
+  db.jobs.filter(j => j.status === 'payable').forEach(j => {
+    rows.push([j.cust, crewName(j.who), j.type, j.date || '', j.status, (j.amount || 0).toFixed(2)]);
+  });
+  return rows.map(r => r.map(v => '"' + String(v).replace(/"/g, '""') + '"').join(',')).join('\r\n');
+}
+function exportPayrollCsv(){
+  const blob = new Blob([exportPayrollCsvString()], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'qp-payroll-' + todayISO() + '.csv';
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
 }
 
 // ---------- main render ----------
@@ -675,6 +755,7 @@ render();
 
 // Exposed for node tests (harmless in the browser)
 try { globalThis.__qp = { addCrew, addJob, addShift, clockIn, clockOut, delTimeLog, setStatus, setHours, setAmount,
+  updateCrew, logAct, exportPayrollCsvString,
   findOverlaps, logMinutes, jobLogMinutes, jobHasLogs, fmtMoney, fmtDur, fmtTime24, minsBetween, migrate,
   exportJsonString, validateImport, weekStart, dayKey, paidByDay, crewStats,
   _db: () => db, _reset: d => { db = d; save(); } }; } catch (e) {}

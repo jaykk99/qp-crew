@@ -51,7 +51,7 @@ function ok(cond, name) {
 }
 function reset() {
   alerts.length = 0;
-  qp._reset({ crew: [], jobs: [], shifts: [], timeLogs: [], meta: { version: 2 } });
+  qp._reset({ crew: [], jobs: [], shifts: [], timeLogs: [], activity: [], meta: { version: 2 } });
 }
 function setInput(id, v) { sandbox.document.getElementById(id).value = v; }
 
@@ -176,6 +176,48 @@ try { qp.validateImport({ nope: true }); } catch (e) { threw = true; }
 ok(threw, 'validateImport rejects garbage');
 const clean2 = qp.validateImport({ crew: [{ id: 'x' }], jobs: [] });
 ok(clean2.crew.length === 0, 'validateImport drops nameless crew');
+
+// ---- quote fee model ----
+reset();
+setInput('c-name', 'Quoter Z'); setInput('c-role', 'quoter'); setInput('c-rate', '25'); setInput('c-qfee', '40'); qp.addCrew();
+const qz = qp._db().crew[0];
+ok(qz.quoteFee === 40, 'addCrew stores quote fee');
+setInput('j-cust', 'Quote Me'); setInput('j-type', 'quote'); setInput('j-who', qz.id); qp.addJob();
+ok(qp._db().jobs[0].amount === 40, 'quote job prefills quoter fee');
+setInput('rate-' + qz.id, '30'); setInput('qfee-' + qz.id, '55'); qp.updateCrew(qz.id);
+ok(qp._db().crew[0].rate === 30 && qp._db().crew[0].quoteFee === 55, 'updateCrew edits pay');
+const qjid = qp._db().jobs[0].id;
+qp.setStatus(qjid, 'customer confirmed');
+qp.setStatus(qjid, 'payable');
+ok(qp._db().jobs[0].amount === 40, 'quote fee survives to payable');
+
+// ---- activity log ----
+reset();
+const a0 = qp._db().activity.length;
+qp.logAct('test entry');
+ok(qp._db().activity.length === a0 + 1 && qp._db().activity[0].text === 'test entry', 'logAct records');
+setInput('c-name', 'Act Guy'); setInput('c-role', 'worker'); setInput('c-rate', '25'); qp.addCrew();
+ok(qp._db().activity.some(a => a.text.includes('Act Guy')), 'addCrew logs activity');
+for (let i = 0; i < 250; i++) qp.logAct('x' + i);
+ok(qp._db().activity.length === 200, 'activity capped at 200');
+
+// ---- payroll CSV ----
+reset();
+setInput('c-name', 'P1'); setInput('c-role', 'worker'); setInput('c-rate', '25'); qp.addCrew();
+const p1 = qp._db().crew[0].id;
+setInput('j-cust', 'CSV "Customer", Inc'); setInput('j-type', 'build'); setInput('j-who', p1); qp.addJob();
+const pjid = qp._db().jobs[0].id;
+qp.setHours(pjid, '2'); qp.setStatus(pjid, 'payable');
+const csv = qp.exportPayrollCsvString();
+ok(csv.split('\r\n').length === 2, 'CSV has header + 1 row');
+ok(csv.includes('"CSV ""Customer"", Inc"'), 'CSV escapes quotes');
+ok(csv.includes('50.00'), 'CSV carries amount');
+
+// ---- migrate old crew gets quoteFee ----
+reset();
+qp._reset({ crew: [{ id: 'c9', name: 'Legacy', role: 'worker', rate: 25 }], jobs: [], shifts: [], timeLogs: [], activity: [] });
+qp.migrate();
+ok(qp._db().crew[0].quoteFee === 25, 'migrate backfills quoteFee');
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
