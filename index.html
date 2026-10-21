@@ -5,13 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Quonset Place | Crew System</title>
 <style>
-  :root { --bg:#0b0b0d; --card:#16161a; --red:#d7263d; --txt:#f5f5f5; --dim:#9a9aa3; --green:#2d6a4f; --gold:#ffb300; }
+  :root { --bg:#0b0b0d; --card:#16161a; --red:#d7263d; --txt:#f5f5f5; --dim:#9a9aa3; --green:#2d6a4f; --gold:#ffb300; --blue:#1d4ed8; }
   * { box-sizing:border-box; }
   body { background:var(--bg); color:var(--txt); font-family:system-ui,sans-serif; margin:0; padding:16px; }
   main { max-width:960px; margin:0 auto; }
   h1 { color:var(--red); margin:8px 0 2px; }
   .sub { color:var(--dim); font-size:14px; margin-bottom:16px; }
-  .tabs { display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap; }
+  .tabs { display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap; position:sticky; top:0; background:var(--bg); padding:8px 0; z-index:10; }
   .tab { background:var(--card); border:1px solid #2a2a30; color:var(--txt); border-radius:8px; padding:10px 18px; cursor:pointer; font-size:15px; }
   .tab.active { background:var(--red); border-color:var(--red); font-weight:700; }
   .panel { display:none; } .panel.active { display:block; }
@@ -20,19 +20,50 @@
   .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
   input, select, textarea { background:#0b0b0d; border:1px solid #2a2a30; color:var(--txt); border-radius:8px; padding:10px 12px; font-size:15px; }
   input, select { min-width:0; }
+  input[type="time"], input[type="date"] { color-scheme:dark; }
   label { display:block; color:var(--dim); font-size:13px; margin:10px 0 4px; }
   button { background:var(--red); color:#fff; border:0; border-radius:8px; padding:10px 20px; font-size:15px; font-weight:700; cursor:pointer; }
   button.ghost { background:#222228; color:var(--txt); border:1px solid #2a2a30; font-weight:400; }
   button.green { background:var(--green); }
   button:disabled { opacity:.45; }
   .pill { display:inline-block; border-radius:20px; padding:3px 12px; font-size:12px; font-weight:700; }
-  .p-assigned { background:#333; } .p-progress { background:#7c5a00; } .p-done { background:#1d4ed8; }
+  .p-assigned { background:#333; } .p-progress { background:#7c5a00; } .p-done { background:var(--blue); }
   .p-confirmed { background:var(--green); } .p-payable { background:var(--gold); color:#000; } .p-paid { background:#444; color:#aaa; }
   .money { font-size:22px; font-weight:800; color:var(--gold); }
   .muted { color:var(--dim); font-size:14px; }
   .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
   @media (max-width:640px){ .grid2{grid-template-columns:1fr;} }
   .del { background:none; border:none; color:#666; cursor:pointer; font-size:18px; padding:4px 8px; }
+  a.tel { color:var(--gold); text-decoration:none; }
+  .chip { display:inline-block; background:#222228; border:1px solid #2a2a30; border-radius:20px; padding:6px 14px; font-size:13px; margin:0 6px 6px 0; }
+  .chip b { color:var(--gold); }
+  .warn { background:#3a2a00; border:1px solid #7c5a00; color:#ffd97a; border-radius:8px; padding:8px 12px; font-size:13px; margin:8px 0; }
+  .sched-day { border:1px solid #2a2a30; border-radius:10px; margin-bottom:10px; overflow:hidden; }
+  .sched-day.today { border-color:var(--red); }
+  .sched-head { background:#1e1e24; padding:10px 14px; display:flex; justify-content:space-between; align-items:center; }
+  .sched-head b { font-size:15px; }
+  .shift-row { display:flex; gap:10px; align-items:center; padding:10px 14px; border-top:1px solid #2a2a30; flex-wrap:wrap; }
+  .shift-time { font-weight:700; color:var(--gold); min-width:130px; }
+  .bars { display:flex; align-items:flex-end; gap:6px; height:110px; padding-top:8px; }
+  .bar-col { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; height:100%; }
+  .bar { width:100%; max-width:44px; background:var(--green); border-radius:4px 4px 0 0; min-height:3px; }
+  .bar-lab { font-size:10px; color:var(--dim); margin-top:4px; }
+  .stat-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(140px, 1fr)); gap:10px; margin-top:10px; }
+  .stat { background:#0b0b0d; border:1px solid #2a2a30; border-radius:8px; padding:10px; }
+  .stat .v { font-size:18px; font-weight:800; }
+  .stat .k { font-size:12px; color:var(--dim); }
+  .timelog { background:#0b0b0d; border:1px solid #2a2a30; border-radius:8px; padding:10px 12px; margin-top:10px; }
+  .timelog .trow { display:flex; justify-content:space-between; align-items:center; padding:4px 0; font-size:14px; }
+  .clocked { color:#7dffb0; font-weight:700; }
+  .file-label { background:#222228; color:var(--txt); border:1px solid #2a2a30; border-radius:8px; padding:10px 20px; font-size:15px; cursor:pointer; }
+  @media print {
+    body { background:#fff; color:#000; padding:0; }
+    .tabs, button, input, select, textarea, .print-hide, .del { display:none !important; }
+    .panel { display:block !important; }
+    .card { border-color:#ccc; break-inside:avoid; }
+    .money { color:#000; } .muted { color:#555; }
+    a.tel { color:#000; }
+  }
 </style>
 </head>
 <body>
@@ -42,6 +73,7 @@
   <div class="tabs">
     <button class="tab active" data-t="dash">Dashboard</button>
     <button class="tab" data-t="crew">Crew</button>
+    <button class="tab" data-t="sched">Schedule</button>
     <button class="tab" data-t="jobs">Jobs</button>
   </div>
 
@@ -61,8 +93,34 @@
     <div id="crew-list"></div>
   </div>
 
+  <div id="p-sched" class="panel">
+    <div class="card print-hide">
+      <h3>Add shift</h3>
+      <div class="grid2">
+        <div><label>Crew</label><select id="s-crew"></select></div>
+        <div><label>Job (optional)</label><select id="s-job"></select></div>
+        <div><label>Date</label><input id="s-date" type="date"></div>
+        <div><label>Notes</label><input id="s-notes" placeholder="Site, task..."></div>
+        <div><label>Start</label><input id="s-start" type="time" value="08:00"></div>
+        <div><label>End</label><input id="s-end" type="time" value="16:00"></div>
+      </div>
+      <div style="margin-top:12px"><button onclick="addShift()">Add shift</button></div>
+    </div>
+    <div class="card print-hide">
+      <div class="row" style="justify-content:space-between">
+        <div class="row">
+          <button class="ghost" onclick="schedNav(-1)">&#8592; Prev</button>
+          <button class="ghost" onclick="schedNav(0)">This week</button>
+          <button class="ghost" onclick="schedNav(1)">Next &#8594;</button>
+        </div>
+        <div id="sched-range" class="muted"></div>
+      </div>
+    </div>
+    <div id="sched-list"></div>
+  </div>
+
   <div id="p-jobs" class="panel">
-    <div class="card">
+    <div class="card print-hide">
       <h3>New job</h3>
       <div class="grid2">
         <div><label>Customer name</label><input id="j-cust" placeholder="Customer"></div>
@@ -75,38 +133,182 @@
       <div><label>Notes</label><textarea id="j-notes" rows="2" style="width:100%" placeholder="Building size, details..."></textarea></div>
       <div style="margin-top:12px"><button onclick="addJob()">Create job</button></div>
     </div>
+    <div class="card print-hide">
+      <div class="row">
+        <input id="job-search" placeholder="Search customer, address, notes..." style="flex:1; min-width:200px" oninput="jobQuery=this.value; renderJobs()">
+        <select id="job-status-filter" onchange="jobStatusFilter=this.value; renderJobs()">
+          <option value="">All statuses</option>
+          <option value="assigned">Assigned</option>
+          <option value="in progress">In progress</option>
+          <option value="done">Done</option>
+          <option value="customer confirmed">Customer confirmed</option>
+          <option value="payable">Payable</option>
+          <option value="paid">Paid</option>
+        </select>
+        <select id="job-sort" onchange="jobSort=this.value; renderJobs()">
+          <option value="new">Newest first</option>
+          <option value="date">Job date</option>
+          <option value="cust">Customer A-Z</option>
+        </select>
+      </div>
+    </div>
     <div id="job-list"></div>
+  </div>
+
+  <div class="card print-hide" style="margin-top:16px">
+    <h3>Data backup</h3>
+    <div class="row">
+      <button class="ghost" onclick="exportData()">Download backup (JSON)</button>
+      <label class="file-label">Import backup<input type="file" id="import-file" accept=".json,application/json" style="display:none" onchange="importFile(this)"></label>
+      <button class="ghost" onclick="clearAll()">Erase everything</button>
+    </div>
+    <div class="muted" style="margin-top:8px">Backups stay on this device. Nothing is sent to any server.</div>
   </div>
 </main>
 <script>
+'use strict';
 const DB_KEY = 'qp_crew_v1';
-let db = load() || { crew: [], jobs: [] };
-function load(){ try { return JSON.parse(localStorage.getItem(DB_KEY)); } catch(e){ return null; } }
-function save(){ localStorage.setItem(DB_KEY, JSON.stringify(db)); }
-const uid = () => Math.random().toString(36).slice(2, 9);
-const esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-const STATUS = ['assigned','in progress','done','customer confirmed','payable','paid'];
-const pill = s => `<span class="pill p-${s.replace(/ /g,'').replace('customerconfirmed','confirmed')}">${esc(s)}</span>`;
+const DEFAULT_RATE = 25;
+const STATUS = [
+  { key: 'assigned', label: 'Assigned', cls: 'assigned' },
+  { key: 'in progress', label: 'In Progress', cls: 'progress' },
+  { key: 'done', label: 'Done', cls: 'done' },
+  { key: 'customer confirmed', label: 'Customer Confirmed', cls: 'confirmed' },
+  { key: 'payable', label: 'Payable', cls: 'payable' },
+  { key: 'paid', label: 'Paid', cls: 'paid' },
+];
 
-document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => {
-  document.querySelectorAll('.tab').forEach(x => x.classList.toggle('active', x === t));
-  document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === 'p-' + t.dataset.t));
-}));
+function freshDb(){ return { crew: [], jobs: [], shifts: [], timeLogs: [], meta: { version: 2 } }; }
+function load(){ try { return JSON.parse(localStorage.getItem(DB_KEY)); } catch (e) { return null; } }
+function save(){ try { localStorage.setItem(DB_KEY, JSON.stringify(db)); } catch (e) { alert('Could not save: storage full or blocked.'); } }
+function migrate(){
+  if (!db || typeof db !== 'object') db = freshDb();
+  if (!Array.isArray(db.crew)) db.crew = [];
+  if (!Array.isArray(db.jobs)) db.jobs = [];
+  if (!Array.isArray(db.shifts)) db.shifts = [];
+  if (!Array.isArray(db.timeLogs)) db.timeLogs = [];
+  if (!db.meta || typeof db.meta !== 'object') db.meta = { version: 2 };
+  db.jobs.forEach(j => {
+    if (typeof j.hours !== 'number') j.hours = 0;
+    if (typeof j.amount !== 'number') j.amount = 0;
+    if (!j.status) j.status = 'assigned';
+    if (!j.created) j.created = Date.now();
+  });
+}
 
+let db = load() || freshDb();
+migrate();
+let jobQuery = '', jobStatusFilter = '', jobSort = 'new';
+let schedOffset = 0;
+const crewDetailOpen = {};
+
+// ---------- helpers ----------
+const uid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
+const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+const round2 = n => Math.round((n || 0) * 100) / 100;
+function fmtMoney(n){ return '$' + round2(n).toFixed(2); }
+function telHref(phone){ const d = String(phone || '').replace(/\D/g, ''); return d ? 'tel:+' + (d.length === 10 ? '1' + d : d) : ''; }
+function telLink(phone){ const p = String(phone || '').trim(); if (!p) return '<span class="muted">no phone</span>'; const h = telHref(p); return h ? `<a class="tel" href="${h}">${esc(p)}</a>` : esc(p); }
+function todayISO(){ const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+function fmtDate(iso){
+  if (!iso) return '';
+  const d = new Date(iso + 'T00:00:00');
+  if (isNaN(d)) return esc(iso);
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + (d.getFullYear() !== new Date().getFullYear() ? ', ' + d.getFullYear() : '');
+}
+function fmtDateLong(iso){
+  if (!iso) return '';
+  const d = new Date(iso + 'T00:00:00');
+  if (isNaN(d)) return esc(iso);
+  return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+}
+function fmtTime24(hm){
+  if (!hm) return '';
+  const parts = String(hm).split(':'); let h = parseInt(parts[0], 10); const m = parts[1] || '00';
+  if (isNaN(h)) return esc(hm);
+  const ap = h >= 12 ? 'PM' : 'AM'; h = h % 12; if (h === 0) h = 12;
+  return h + ':' + m + ' ' + ap;
+}
+function minsBetween(start, end){
+  const p = s => { const a = String(s || '').split(':'); return (parseInt(a[0], 10) || 0) * 60 + (parseInt(a[1], 10) || 0); };
+  return Math.max(0, p(end) - p(start));
+}
+function fmtDur(mins){
+  mins = Math.max(0, Math.round(mins || 0));
+  const h = Math.floor(mins / 60), m = mins % 60;
+  if (h === 0) return m + 'm';
+  return m === 0 ? h + 'h' : h + 'h ' + m + 'm';
+}
+function fmtClock(ts){
+  const d = new Date(ts);
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' ' +
+    d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+}
+function dayKey(d){ return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+function weekStart(offset){
+  const d = new Date(); d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() - d.getDay() + (offset || 0) * 7);
+  return d;
+}
+const crewById = id => db.crew.find(c => c.id === id);
+const jobById = id => db.jobs.find(j => j.id === id);
+const crewName = id => (crewById(id) || {}).name || 'Unknown';
+const statusMeta = key => STATUS.find(s => s.key === key) || STATUS[0];
+const pill = key => { const m = statusMeta(key); return `<span class="pill p-${m.cls}">${esc(m.label)}</span>`; };
+</script>
+<script>
+'use strict';
 // ---------- crew ----------
 function addCrew(){
   const name = document.getElementById('c-name').value.trim();
-  if (!name) return alert('Name required');
+  if (!name) { alert('Name required'); return; }
+  const rate = parseFloat(document.getElementById('c-rate').value);
   db.crew.push({ id: uid(), name, phone: document.getElementById('c-phone').value.trim(),
     role: document.getElementById('c-role').value,
-    rate: parseFloat(document.getElementById('c-rate').value) || 25 });
+    rate: (isNaN(rate) || rate < 0) ? DEFAULT_RATE : rate, created: Date.now() });
   document.getElementById('c-name').value = ''; document.getElementById('c-phone').value = '';
   save(); render();
 }
 function delCrew(id){
-  if (!confirm('Remove this crew member?')) return;
-  db.crew = db.crew.filter(c => c.id !== id);
+  const c = crewById(id);
+  if (!c) return;
+  const linked = db.jobs.filter(j => j.who === id).length + db.shifts.filter(s => s.crewId === id).length;
+  if (!confirm('Remove ' + c.name + (linked ? ' (' + linked + ' linked job(s)/shift(s) will keep the name as Unknown)' : '') + '?')) return;
+  db.crew = db.crew.filter(x => x.id !== id);
   save(); render();
+}
+function toggleCrewDetail(id){ crewDetailOpen[id] = !crewDetailOpen[id]; renderCrew(); }
+function crewStats(id){
+  const jobs = db.jobs.filter(j => j.who === id);
+  const mins = db.timeLogs.filter(t => t.crewId === id && t.end).reduce((s, t) => s + logMinutes(t), 0);
+  const payable = round2(jobs.filter(j => j.status === 'payable').reduce((s, j) => s + (j.amount || 0), 0));
+  const paid = round2(jobs.filter(j => j.status === 'paid').reduce((s, j) => s + (j.amount || 0), 0));
+  const upcomingShifts = db.shifts.filter(s => s.crewId === id && s.date >= todayISO()).length;
+  const activeJobs = jobs.filter(j => !['paid', 'payable'].includes(j.status)).length;
+  return { jobs: jobs.length, hours: round2(mins / 60), payable, paid, upcomingShifts, activeJobs };
+}
+function renderCrew(){
+  document.getElementById('crew-list').innerHTML = db.crew.map(c => {
+    const open = !!crewDetailOpen[c.id];
+    const st = open ? crewStats(c.id) : null;
+    return `<div class="card"><div class="row" style="justify-content:space-between">
+      <div><h3 style="margin:0">${esc(c.name)}</h3>
+      <div class="muted">${c.role === 'worker' ? 'Worker &middot; ' + fmtMoney(c.rate) + '/hr' : 'Quoter &middot; paid per confirmed quote'} &middot; ${telLink(c.phone)}</div></div>
+      <div class="row">
+        <button class="ghost" onclick="toggleCrewDetail('${c.id}')">${open ? 'Hide' : 'Details'}</button>
+        <button class="del" onclick="delCrew('${c.id}')" title="Remove">&times;</button>
+      </div>
+    </div>
+    ${open ? `<div class="stat-grid">
+        <div class="stat"><div class="v">${st.jobs}</div><div class="k">Jobs assigned</div></div>
+        <div class="stat"><div class="v">${st.activeJobs}</div><div class="k">Active jobs</div></div>
+        <div class="stat"><div class="v">${st.hours}h</div><div class="k">Hours logged</div></div>
+        <div class="stat"><div class="v">${fmtMoney(st.payable)}</div><div class="k">Awaiting pay</div></div>
+        <div class="stat"><div class="v">${fmtMoney(st.paid)}</div><div class="k">Paid out</div></div>
+        <div class="stat"><div class="v">${st.upcomingShifts}</div><div class="k">Upcoming shifts</div></div>
+      </div>` : ''}
+    </div>`;
+  }).join('') || '<div class="muted">No crew yet.</div>';
 }
 
 // ---------- jobs ----------
@@ -117,96 +319,365 @@ function refreshWho(){
 function addJob(){
   const cust = document.getElementById('j-cust').value.trim();
   const who = document.getElementById('j-who').value;
-  if (!cust || !who) return alert('Customer and crew member required');
+  if (!cust || !who) { alert('Customer and crew member required'); return; }
+  const date = document.getElementById('j-date').value;
   db.jobs.push({ id: uid(), cust, phone: document.getElementById('j-phone').value.trim(),
     addr: document.getElementById('j-addr').value.trim(), type: document.getElementById('j-type').value,
-    who, date: document.getElementById('j-date').value, notes: document.getElementById('j-notes').value.trim(),
-    status: 'assigned', hours: 0, amount: 0, created: Date.now() });
-  ['j-cust','j-phone','j-addr','j-notes'].forEach(i => document.getElementById(i).value = '');
+    who, date: date || '', notes: document.getElementById('j-notes').value.trim(),
+    status: 'assigned', hours: 0, amount: 0, created: Date.now(), paidAt: 0 });
+  ['j-cust', 'j-phone', 'j-addr', 'j-notes'].forEach(i => document.getElementById(i).value = '');
+  document.getElementById('j-date').value = '';
   save(); render();
 }
+function buildAmount(job){
+  const c = crewById(job.who);
+  return round2((job.hours || 0) * (c ? c.rate : DEFAULT_RATE));
+}
 function setStatus(id, s){
-  const j = db.jobs.find(x => x.id === id); if (!j) return;
+  const j = jobById(id); if (!j) return;
+  if (!STATUS.some(x => x.key === s)) return;
   j.status = s;
-  if (s === 'payable' && j.type === 'build' && !j.amount) {
-    const c = db.crew.find(x => x.id === j.who);
-    j.amount = Math.round(j.hours * (c ? c.rate : 25) * 100) / 100;
-  }
+  if (s === 'payable' && j.type === 'build' && !j.amount) j.amount = buildAmount(j);
+  if (s === 'paid' && !j.paidAt) j.paidAt = Date.now();
+  if (s !== 'paid') j.paidAt = 0;
   save(); render();
 }
 function setHours(id, h){
-  const j = db.jobs.find(x => x.id === id); if (!j) return;
+  const j = jobById(id); if (!j) return;
+  if (jobHasLogs(id)) { alert('Hours come from the time log below. Delete the log entries to edit hours by hand.'); render(); return; }
   j.hours = Math.max(0, parseFloat(h) || 0);
-  const c = db.crew.find(x => x.id === j.who);
-  if (j.type === 'build') j.amount = Math.round(j.hours * (c ? c.rate : 25) * 100) / 100;
+  if (j.type === 'build') j.amount = buildAmount(j);
   save(); render();
 }
 function setAmount(id, a){
-  const j = db.jobs.find(x => x.id === id); if (!j) return;
+  const j = jobById(id); if (!j) return;
   j.amount = Math.max(0, parseFloat(a) || 0);
   save(); render();
 }
 function delJob(id){
-  if (!confirm('Delete this job?')) return;
-  db.jobs = db.jobs.filter(j => j.id !== id);
+  const j = jobById(id); if (!j) return;
+  if (!confirm('Delete job for ' + j.cust + '? Its time logs go with it.')) return;
+  db.jobs = db.jobs.filter(x => x.id !== id);
+  db.timeLogs = db.timeLogs.filter(t => t.jobId !== id);
   save(); render();
 }
-const crewName = id => (db.crew.find(c => c.id === id) || {}).name || 'Unknown';
 
-// ---------- render ----------
-function render(){
-  refreshWho();
-  // crew list
-  document.getElementById('crew-list').innerHTML = db.crew.map(c =>
-    `<div class="card"><div class="row" style="justify-content:space-between">
-      <div><h3 style="margin:0">${esc(c.name)}</h3>
-      <div class="muted">${c.role === 'worker' ? 'Worker · $' + c.rate + '/hr' : 'Quoter · paid per confirmed quote'} · ${esc(c.phone)}</div></div>
-      <button class="del" onclick="delCrew('${c.id}')">×</button>
-    </div></div>`).join('') || '<div class="muted">No crew yet.</div>';
+// ---------- time logs ----------
+function logMinutes(t){ return t && t.end ? Math.max(0, Math.round((t.end - t.start) / 60000)) : 0; }
+function logsForJob(jobId){ return db.timeLogs.filter(t => t.jobId === jobId).sort((a, b) => a.start - b.start); }
+function jobHasLogs(jobId){ return db.timeLogs.some(t => t.jobId === jobId); }
+function openLog(jobId){ return db.timeLogs.find(t => t.jobId === jobId && !t.end) || null; }
+function jobLogMinutes(jobId){ return logsForJob(jobId).reduce((s, t) => s + logMinutes(t), 0); }
+function syncJobHours(job){
+  job.hours = round2(jobLogMinutes(job.id) / 60);
+  if (job.type === 'build') job.amount = buildAmount(job);
+}
+function clockIn(jobId){
+  const j = jobById(jobId); if (!j) return;
+  if (openLog(jobId)) { alert('Already clocked in on this job. Clock out first.'); return; }
+  db.timeLogs.push({ id: uid(), jobId, crewId: j.who, start: Date.now(), end: null });
+  if (j.status === 'assigned') j.status = 'in progress';
+  save(); render();
+}
+function clockOut(jobId){
+  const j = jobById(jobId); if (!j) return;
+  const t = openLog(jobId);
+  if (!t) { alert('Nobody is clocked in on this job.'); return; }
+  t.end = Date.now();
+  if (t.end <= t.start) t.end = t.start + 60000;
+  syncJobHours(j);
+  save(); render();
+}
+function delTimeLog(id){
+  const t = db.timeLogs.find(x => x.id === id); if (!t) return;
+  if (!confirm('Delete this time entry (' + fmtDur(logMinutes(t)) + ')?')) return;
+  db.timeLogs = db.timeLogs.filter(x => x.id !== id);
+  const j = jobById(t.jobId);
+  if (j) syncJobHours(j);
+  save(); render();
+}
+function timeLogHtml(j){
+  const logs = logsForJob(j.id);
+  const open = openLog(j.id);
+  const total = jobLogMinutes(j.id);
+  let html = '<div class="timelog"><div class="trow"><b>Time log</b>';
+  html += open
+    ? `<span class="clocked">Clocked in ${fmtClock(open.start)}</span><button class="green" onclick="clockOut('${j.id}')">Clock out</button>`
+    : `<span class="muted">${logs.length ? 'Total ' + fmtDur(total) : 'No time logged yet'}</span><button class="ghost" onclick="clockIn('${j.id}')">Clock in</button>`;
+  html += '</div>';
+  logs.forEach(t => {
+    html += `<div class="trow"><span>${fmtClock(t.start)}${t.end ? ' &rarr; ' + fmtClock(t.end) : ' &rarr; <span class="clocked">now</span>'} &middot; ${t.end ? fmtDur(logMinutes(t)) : 'running'} &middot; ${esc(crewName(t.crewId))}</span>`;
+    if (t.end) html += `<button class="del" onclick="delTimeLog('${t.id}')" title="Delete entry">&times;</button>`;
+    html += '</div>';
+  });
+  html += '</div>';
+  return html;
+}
+</script>
+<script>
+'use strict';
+// ---------- schedule ----------
+function refreshShiftCrew(){
+  const sel = document.getElementById('s-crew');
+  sel.innerHTML = db.crew.map(c => `<option value="${c.id}">${esc(c.name)} (${c.role})</option>`).join('') || '<option value="">Add crew first</option>';
+}
+function refreshShiftJobs(){
+  const sel = document.getElementById('s-job');
+  const opts = db.jobs.filter(j => !['paid'].includes(j.status))
+    .sort((a, b) => b.created - a.created)
+    .map(j => `<option value="${j.id}">${esc(j.cust)} &middot; ${esc(j.addr || 'no address')}</option>`).join('');
+  sel.innerHTML = '<option value="">No job / general</option>' + opts;
+}
+function shiftsOn(crewId, date){
+  return db.shifts.filter(s => s.crewId === crewId && s.date === date)
+    .sort((a, b) => String(a.start).localeCompare(String(b.start)));
+}
+function findOverlaps(crewId, date, extra){
+  const list = shiftsOn(crewId, date).concat(extra ? [extra] : []);
+  const pairs = [];
+  for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) {
+    const a = list[i], b = list[j];
+    if (a.id === b.id) continue;
+    if (a.start < b.end && b.start < a.end) pairs.push([a, b]);
+  }
+  return pairs;
+}
+function addShift(){
+  const crewId = document.getElementById('s-crew').value;
+  const date = document.getElementById('s-date').value || todayISO();
+  const start = document.getElementById('s-start').value || '08:00';
+  const end = document.getElementById('s-end').value || '16:00';
+  if (!crewId) { alert('Add a crew member first'); return; }
+  if (start >= end) { alert('Shift end must be after start'); return; }
+  const draft = { id: uid(), crewId, jobId: document.getElementById('s-job').value || null,
+    date, start, end, notes: document.getElementById('s-notes').value.trim() };
+  const clashes = findOverlaps(crewId, date, draft);
+  if (clashes.length && !confirm(crewName(crewId) + ' already has a shift overlapping ' + fmtTime24(start) + ' - ' + fmtTime24(end) + ' that day. Add anyway?')) return;
+  db.shifts.push(draft);
+  document.getElementById('s-notes').value = '';
+  save(); render();
+}
+function delShift(id){
+  if (!confirm('Delete this shift?')) return;
+  db.shifts = db.shifts.filter(s => s.id !== id);
+  save(); render();
+}
+function schedNav(d){
+  if (d === 0) schedOffset = 0; else schedOffset += d;
+  renderSched();
+}
+function renderSched(){
+  refreshShiftCrew(); refreshShiftJobs();
+  const start = weekStart(schedOffset);
+  const endD = new Date(start); endD.setDate(endD.getDate() + 6);
+  document.getElementById('sched-range').textContent =
+    start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' - ' +
+    endD.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  const today = todayISO();
+  let html = '';
+  let weekMins = 0;
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(start); d.setDate(d.getDate() + i);
+    const key = dayKey(d);
+    const dayShifts = db.shifts.filter(s => s.date === key)
+      .sort((a, b) => String(a.start).localeCompare(String(b.start)));
+    const dayMins = dayShifts.reduce((s, x) => s + minsBetween(x.start, x.end), 0);
+    weekMins += dayMins;
+    const clashCrew = new Set();
+    dayShifts.forEach(s => { if (findOverlaps(s.crewId, key).length) clashCrew.add(s.crewId); });
+    html += `<div class="sched-day${key === today ? ' today' : ''}">
+      <div class="sched-head"><b>${fmtDateLong(key)}</b><span class="muted">${dayShifts.length} shift(s) &middot; ${fmtDur(dayMins)}</span></div>`;
+    if (clashCrew.size) html += `<div class="warn" style="margin:8px 14px">Overlap: ${[...clashCrew].map(crewName).map(esc).join(', ')} has clashing shifts this day.</div>`;
+    html += dayShifts.map(s => {
+      const job = s.jobId ? jobById(s.jobId) : null;
+      return `<div class="shift-row">
+        <span class="shift-time">${fmtTime24(s.start)} - ${fmtTime24(s.end)}</span>
+        <span><b>${esc(crewName(s.crewId))}</b>${job ? ' &middot; ' + esc(job.cust) + ' (' + esc(job.addr || '') + ')' : ''}</span>
+        ${s.notes ? `<span class="muted">${esc(s.notes)}</span>` : ''}
+        <span class="muted">${fmtDur(minsBetween(s.start, s.end))}</span>
+        <span style="flex:1"></span>
+        <button class="del print-hide" onclick="delShift('${s.id}')" title="Delete shift">&times;</button>
+      </div>`;
+    }).join('') || '<div class="muted" style="padding:10px 14px">No shifts.</div>';
+    html += '</div>';
+  }
+  document.getElementById('sched-list').innerHTML =
+    `<div class="card"><div class="row" style="justify-content:space-between"><b>Week total</b><span class="money">${fmtDur(weekMins)}</span></div></div>` + html;
+}
 
-  // jobs list
-  const sorted = [...db.jobs].sort((a,b) => b.created - a.created);
-  document.getElementById('job-list').innerHTML = sorted.map(j => `
-    <div class="card">
+// ---------- jobs list ----------
+function filteredJobs(){
+  let list = [...db.jobs];
+  if (jobStatusFilter) list = list.filter(j => j.status === jobStatusFilter);
+  if (jobQuery.trim()) {
+    const q = jobQuery.trim().toLowerCase();
+    list = list.filter(j => [j.cust, j.addr, j.notes, j.phone, crewName(j.who)].join(' ').toLowerCase().includes(q));
+  }
+  if (jobSort === 'date') list.sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')) || b.created - a.created);
+  else if (jobSort === 'cust') list.sort((a, b) => String(a.cust).localeCompare(String(b.cust)));
+  else list.sort((a, b) => b.created - a.created);
+  return list;
+}
+function renderJobs(){
+  const list = filteredJobs();
+  document.getElementById('job-list').innerHTML = list.map(j => {
+    const hasLogs = jobHasLogs(j.id);
+    const hoursCtl = j.type === 'build'
+      ? (hasLogs
+        ? `<label style="margin:0">Hours <b>${j.hours}h</b> <span class="muted">(from time log)</span></label>`
+        : `<label style="margin:0">Hours <input type="number" min="0" step="0.5" value="${j.hours}" style="width:80px" onchange="setHours('${j.id}', this.value)"></label>`)
+      : '';
+    return `<div class="card">
       <div class="row" style="justify-content:space-between">
         <div><h3 style="margin:0">${esc(j.cust)} ${pill(j.status)}</h3>
-        <div class="muted">${j.type === 'quote' ? 'Quote visit' : 'Build'} · ${esc(crewName(j.who))} · ${esc(j.addr)} ${j.date ? '· ' + j.date : ''}</div>
+        <div class="muted">${j.type === 'quote' ? 'Quote visit' : 'Build'} &middot; ${esc(crewName(j.who))} &middot; ${esc(j.addr)}${j.date ? ' &middot; ' + fmtDate(j.date) : ''}${j.phone ? ' &middot; ' + telLink(j.phone) : ''}</div>
         ${j.notes ? `<div class="muted">${esc(j.notes)}</div>` : ''}</div>
-        <button class="del" onclick="delJob('${j.id}')">×</button>
+        <button class="del print-hide" onclick="delJob('${j.id}')" title="Delete job">&times;</button>
       </div>
-      <div class="row" style="margin-top:10px">
-        ${j.type === 'build' ? `<label style="margin:0">Hours <input type="number" min="0" step="0.5" value="${j.hours}" style="width:80px" onchange="setHours('${j.id}', this.value)"></label>` : ''}
+      ${j.type === 'build' ? timeLogHtml(j) : ''}
+      <div class="row print-hide" style="margin-top:10px">
+        ${hoursCtl}
         <label style="margin:0">Pay $ <input type="number" min="0" step="1" value="${j.amount}" style="width:100px" onchange="setAmount('${j.id}', this.value)"></label>
         <select onchange="setStatus('${j.id}', this.value)">
-          ${STATUS.map(s => `<option ${s === j.status ? 'selected' : ''}>${s}</option>`).join('')}
+          ${STATUS.map(s => `<option value="${s.key}"${s.key === j.status ? ' selected' : ''}>${s.label}</option>`).join('')}
         </select>
       </div>
-    </div>`).join('') || '<div class="muted">No jobs yet.</div>';
+    </div>`;
+  }).join('') || '<div class="muted">No jobs match.</div>';
+}
 
-  // dashboard
+// ---------- dashboard ----------
+function paidByDay(days){
+  const out = [];
+  const now = new Date(); now.setHours(0, 0, 0, 0);
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(now); d.setDate(d.getDate() - i);
+    const key = dayKey(d);
+    const total = db.jobs.filter(j => j.status === 'paid' && dayKey(new Date(j.paidAt || j.created)) === key)
+      .reduce((s, j) => s + (j.amount || 0), 0);
+    out.push({ key, label: d.toLocaleDateString('en-US', { weekday: 'narrow' }), total: round2(total) });
+  }
+  return out;
+}
+function renderDash(){
   const payable = db.jobs.filter(j => j.status === 'payable');
   const paid = db.jobs.filter(j => j.status === 'paid');
-  const owed = payable.reduce((s,j) => s + (j.amount || 0), 0);
-  const paidTotal = paid.reduce((s,j) => s + (j.amount || 0), 0);
+  const owed = round2(payable.reduce((s, j) => s + (j.amount || 0), 0));
+  const paidTotal = round2(paid.reduce((s, j) => s + (j.amount || 0), 0));
   const byPerson = {};
-  payable.forEach(j => { const n = crewName(j.who); byPerson[n] = (byPerson[n] || 0) + (j.amount || 0); });
-  const active = db.jobs.filter(j => !['paid','payable'].includes(j.status)).length;
+  payable.forEach(j => { const n = crewName(j.who); byPerson[n] = round2((byPerson[n] || 0) + (j.amount || 0)); });
+  const active = db.jobs.filter(j => !['paid', 'payable'].includes(j.status)).length;
+  const chips = STATUS.map(s => {
+    const n = db.jobs.filter(j => j.status === s.key).length;
+    return `<span class="chip">${esc(s.label)} <b>${n}</b></span>`;
+  }).join('');
+  const chart = paidByDay(14);
+  const max = Math.max(1, ...chart.map(c => c.total));
+  const bars = chart.map(c => `<div class="bar-col" title="${c.label}: ${fmtMoney(c.total)}">
+      <div class="bar" style="height:${Math.max(3, Math.round(c.total / max * 90))}px"></div>
+      <div class="bar-lab">${c.label}</div></div>`).join('');
+  const upcoming = db.shifts.filter(s => s.date >= todayISO()).sort((a, b) => String(a.date).localeCompare(String(b.date)) || String(a.start).localeCompare(String(b.start))).slice(0, 5);
   document.getElementById('p-dash').innerHTML = `
+    <div class="card"><div class="row">${chips}</div></div>
     <div class="grid2">
-      <div class="card"><div class="muted">Owed right now</div><div class="money">$${owed.toFixed(2)}</div>
+      <div class="card"><div class="muted">Owed right now</div><div class="money">${fmtMoney(owed)}</div>
         <div class="muted">${payable.length} job(s) confirmed, awaiting pay</div></div>
-      <div class="card"><div class="muted">Paid out total</div><div class="money" style="color:var(--green)">$${paidTotal.toFixed(2)}</div>
+      <div class="card"><div class="muted">Paid out total</div><div class="money" style="color:var(--green)">${fmtMoney(paidTotal)}</div>
         <div class="muted">${paid.length} job(s) paid</div></div>
     </div>
+    <div class="card"><h3>Paid out, last 14 days</h3><div class="bars">${bars}</div></div>
     <div class="card"><h3>Who gets paid</h3>
-      ${Object.keys(byPerson).length ? Object.entries(byPerson).map(([n,a]) =>
-        `<div class="row" style="justify-content:space-between; padding:6px 0"><b>${esc(n)}</b><span class="money">$${a.toFixed(2)}</span></div>`).join('')
+      ${Object.keys(byPerson).length ? Object.entries(byPerson).map(([n, a]) =>
+        `<div class="row" style="justify-content:space-between; padding:6px 0"><b>${esc(n)}</b><span class="money">${fmtMoney(a)}</span></div>`).join('')
         : '<div class="muted">Nobody owed right now.</div>'}
     </div>
+    <div class="card"><h3>Upcoming shifts</h3>
+      ${upcoming.length ? upcoming.map(s => `<div class="row" style="padding:4px 0"><b>${fmtDate(s.date)}</b><span>${fmtTime24(s.start)} - ${fmtTime24(s.end)}</span><span>${esc(crewName(s.crewId))}</span>${s.jobId && jobById(s.jobId) ? `<span class="muted">${esc(jobById(s.jobId).cust)}</span>` : ''}</div>`).join('')
+        : '<div class="muted">Nothing scheduled. Add shifts on the Schedule tab.</div>'}
+    </div>
     <div class="card"><h3>Active jobs: ${active}</h3>
-      <div class="muted">Move a job to "customer confirmed" then "payable" once the customer signs off. Pay from the "Who gets paid" list, then mark "paid".</div></div>`;
+      <div class="muted">Clock in on a build job to log hours. Move a job to "Customer Confirmed" then "Payable" once the customer signs off. Pay from the "Who gets paid" list, then mark "Paid".</div></div>`;
 }
+
+// ---------- backup / import ----------
+function exportJsonString(){ return JSON.stringify(db, null, 2); }
+function exportData(){
+  const blob = new Blob([exportJsonString()], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'qp-crew-backup-' + todayISO() + '.json';
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+}
+function validateImport(obj){
+  if (!obj || typeof obj !== 'object') throw new Error('Not a crew backup file.');
+  if (!Array.isArray(obj.crew) || !Array.isArray(obj.jobs)) throw new Error('Backup is missing crew or jobs.');
+  const clean = freshDb();
+  clean.crew = obj.crew.filter(c => c && c.id && c.name).map(c => ({
+    id: String(c.id), name: String(c.name), phone: String(c.phone || ''),
+    role: c.role === 'worker' ? 'worker' : 'quoter',
+    rate: Math.max(0, parseFloat(c.rate) || DEFAULT_RATE), created: c.created || Date.now()
+  }));
+  clean.jobs = obj.jobs.filter(j => j && j.id && j.cust).map(j => ({
+    id: String(j.id), cust: String(j.cust), phone: String(j.phone || ''), addr: String(j.addr || ''),
+    type: j.type === 'build' ? 'build' : 'quote', who: String(j.who || ''),
+    date: String(j.date || ''), notes: String(j.notes || ''),
+    status: STATUS.some(s => s.key === j.status) ? j.status : 'assigned',
+    hours: Math.max(0, parseFloat(j.hours) || 0), amount: Math.max(0, parseFloat(j.amount) || 0),
+    created: j.created || Date.now(), paidAt: j.paidAt || 0
+  }));
+  if (Array.isArray(obj.shifts)) clean.shifts = obj.shifts.filter(s => s && s.id && s.crewId && s.date && s.start && s.end).map(s => ({
+    id: String(s.id), crewId: String(s.crewId), jobId: s.jobId ? String(s.jobId) : null,
+    date: String(s.date), start: String(s.start), end: String(s.end), notes: String(s.notes || '')
+  }));
+  if (Array.isArray(obj.timeLogs)) clean.timeLogs = obj.timeLogs.filter(t => t && t.id && t.jobId && t.start).map(t => ({
+    id: String(t.id), jobId: String(t.jobId), crewId: String(t.crewId || ''),
+    start: Number(t.start) || Date.now(), end: t.end ? Number(t.end) : null
+  }));
+  return clean;
+}
+function importFile(input){
+  const f = input.files && input.files[0];
+  if (!f) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const clean = validateImport(JSON.parse(reader.result));
+      if (!confirm('Replace all current data with this backup (' + clean.crew.length + ' crew, ' + clean.jobs.length + ' jobs)?')) return;
+      db = clean; migrate(); save(); render();
+      alert('Backup imported.');
+    } catch (e) { alert('Import failed: ' + e.message); }
+    input.value = '';
+  };
+  reader.readAsText(f);
+}
+function clearAll(){
+  if (!confirm('Erase ALL crew, jobs, shifts and time logs on this device? This cannot be undone.')) return;
+  if (!confirm('Really erase everything? Download a backup first if you need it.')) return;
+  db = freshDb(); save(); render();
+}
+
+// ---------- main render ----------
+function render(){
+  refreshWho();
+  renderCrew();
+  renderJobs();
+  renderSched();
+  renderDash();
+}
+
+document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => {
+  document.querySelectorAll('.tab').forEach(x => x.classList.toggle('active', x === t));
+  document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === 'p-' + t.dataset.t));
+}));
+
 render();
+
+// Exposed for node tests (harmless in the browser)
+try { globalThis.__qp = { addCrew, addJob, addShift, clockIn, clockOut, delTimeLog, setStatus, setHours, setAmount,
+  findOverlaps, logMinutes, jobLogMinutes, jobHasLogs, fmtMoney, fmtDur, fmtTime24, minsBetween, migrate,
+  exportJsonString, validateImport, weekStart, dayKey, paidByDay, crewStats,
+  _db: () => db, _reset: d => { db = d; save(); } }; } catch (e) {}
 </script>
 </body>
 </html>
