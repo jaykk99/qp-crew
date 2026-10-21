@@ -252,5 +252,133 @@ const sjd = qp._db().jobs[0];
 ok(sjd.status === 'payable' && sjd.amount === 60, 'confirmAndPayable jumps done -> payable with computed amount');
 ok(qp._db().activity.some(a => a.text.includes('customer confirmed')), 'shortcut logs both transitions');
 
+// ---- expenses, pricing, profit ----
+reset();
+setInput('c-name', 'E2'); setInput('c-role', 'worker'); setInput('c-rate', '20'); qp.addCrew();
+const e2 = qp._db().crew[0].id;
+setInput('j-cust', 'Profit Job'); setInput('j-type', 'build'); setInput('j-who', e2); qp.addJob();
+const pj = qp._db().jobs[0].id;
+qp.setHours(pj, '5'); // 5h x $20 = $100 labor
+qp.setPrice(pj, '300');
+ok(qp._db().jobs[0].price === 300, 'setPrice stores customer price');
+setInput('ex-desc-' + pj, 'Steel'); setInput('ex-amt-' + pj, '80'); qp.addExpense(pj);
+ok(qp.materialsCost(pj) === 80, 'materialsCost sums expenses');
+setInput('ex-desc-' + pj, 'Screws'); setInput('ex-amt-' + pj, '20'); qp.addExpense(pj);
+const prof = qp.jobProfit(pj);
+ok(prof.labor === 100 && prof.materials === 100 && prof.profit === 100, 'jobProfit = price - labor - materials (got ' + prof.profit + ')');
+ok(prof.margin === 33.33, 'margin percent (got ' + prof.margin + ')');
+alerts.length = 0; setInput('ex-desc-' + pj, ''); setInput('ex-amt-' + pj, '5'); qp.addExpense(pj);
+ok(alerts.length === 1 && qp.materialsCost(pj) === 100, 'addExpense rejects empty description');
+qp.delExpense(qp._db().expenses[0].id); // confirm() stubbed true
+ok(qp.materialsCost(pj) === 20, 'delExpense removes expense');
+
+// ---- overtime: daily ----
+reset();
+setInput('set-otmode', 'daily'); setInput('set-otrate', '1.5'); qp.saveSettings();
+ok(qp.otSettings().otMode === 'daily' && qp.otSettings().otRate === 1.5, 'saveSettings persists OT rule');
+setInput('c-name', 'OT1'); setInput('c-role', 'worker'); setInput('c-rate', '20'); qp.addCrew();
+const ot1 = qp._db().crew[0].id;
+setInput('j-cust', 'Long Day'); setInput('j-type', 'build'); setInput('j-who', ot1); qp.addJob();
+const otj = qp._db().jobs[0].id;
+const day = new Date(2026, 9, 21, 8, 0, 0).getTime();
+qp._db().timeLogs.push({ id: 'ot-a', jobId: otj, crewId: ot1, start: day, end: day + 6 * 3600e3 });
+qp._db().timeLogs.push({ id: 'ot-b', jobId: otj, crewId: ot1, start: day + 6 * 3600e3, end: day + 10 * 3600e3 });
+const lab = qp.jobLabor(otj);
+ok(lab.regMins === 480 && lab.otMins === 120, 'daily OT split after 8h (got ' + lab.regMins + '/' + lab.otMins + ')');
+ok(lab.regPay === 160 && lab.otPay === 60 && lab.total === 220, 'OT pay at 1.5x (got ' + lab.total + ')');
+// OT earned across two jobs on the same day splits by hours worked
+setInput('j-cust', 'Long Day 2'); setInput('j-type', 'build'); setInput('j-who', ot1); qp.addJob();
+const otj2 = qp._db().jobs[1].id;
+qp._db().timeLogs.push({ id: 'ot-c', jobId: otj2, crewId: ot1, start: day, end: day + 5 * 3600e3 });
+const l1 = qp.jobLabor(otj), l2 = qp.jobLabor(otj2);
+ok(l1.otMins === 280 && l2.otMins === 140, 'OT splits across jobs by hours (got ' + l1.otMins + '/' + l2.otMins + ')');
+const otTot = qp.crewOtTotals(ot1);
+ok(otTot.otMins === 420 && otTot.otPay === 210, 'crewOtTotals aggregates (got ' + otTot.otMins + ')');
+
+// ---- overtime: weekly ----
+reset();
+setInput('set-otmode', 'weekly'); setInput('set-otrate', '2'); qp.saveSettings();
+setInput('c-name', 'OTW'); setInput('c-role', 'worker'); setInput('c-rate', '10'); qp.addCrew();
+const otw = qp._db().crew[0].id;
+setInput('j-cust', 'Week Job'); setInput('j-type', 'build'); setInput('j-who', otw); qp.addJob();
+const otwj = qp._db().jobs[0].id;
+const mon = new Date(2026, 9, 19, 8, 0, 0).getTime(); // Monday
+for (let d = 0; d < 5; d++) {
+  qp._db().timeLogs.push({ id: 'w' + d, jobId: otwj, crewId: otw, start: mon + d * 86400e3, end: mon + d * 86400e3 + 9 * 3600e3 });
+}
+const wlab = qp.jobLabor(otwj);
+ok(wlab.otMins === 300 && wlab.regMins === 2400, 'weekly OT after 40h (got ' + wlab.otMins + ')');
+ok(wlab.otPay === 100, 'weekly OT at 2x (got ' + wlab.otPay + ')');
+setInput('set-otmode', 'none'); qp.saveSettings();
+const nlab = qp.jobLabor(otwj);
+ok(nlab.otMins === 0 && nlab.regMins === 2700, 'OT off -> all regular');
+
+// ---- photos ----
+reset();
+setInput('c-name', 'Ph'); setInput('c-role', 'worker'); setInput('c-rate', '25'); qp.addCrew();
+setInput('j-cust', 'Photo Job'); setInput('j-type', 'build'); setInput('j-who', qp._db().crew[0].id); qp.addJob();
+const phj = qp._db().jobs[0].id;
+ok(qp.pushPhoto(phj, 'data:image/jpeg;base64,AAAA') === true, 'pushPhoto attaches');
+ok(qp.photosForJob(phj).length === 1, 'photosForJob returns photo');
+alerts.length = 0;
+ok(qp.pushPhoto(phj, 'x'.repeat(2000000)) === false && alerts.length === 1, 'pushPhoto rejects oversized');
+qp.delPhoto(phj, qp._db().jobs[0].photos[0].id); // confirm() stubbed true
+ok(qp.photosForJob(phj).length === 0, 'delPhoto removes');
+
+// ---- integrity ----
+reset();
+setInput('c-name', 'I1'); setInput('c-role', 'worker'); setInput('c-rate', '25'); qp.addCrew();
+setInput('j-cust', 'Int Job'); setInput('j-type', 'build'); setInput('j-who', qp._db().crew[0].id); qp.addJob();
+ok(qp.integrityReport().ok, 'integrityReport clean on fresh data');
+qp._db().jobs[0].who = 'ghost-crew';
+const rep = qp.integrityReport();
+ok(!rep.ok && rep.count >= 1 && rep.issues.some(i => i.includes('removed crew')), 'integrityReport flags orphan crew ref');
+
+// ---- crew search/filter ----
+reset();
+qp.setCrewFilter('', '');
+setInput('c-name', 'Alice Worker'); setInput('c-role', 'worker'); setInput('c-rate', '25'); qp.addCrew();
+setInput('c-name', 'Bob Quoter'); setInput('c-role', 'quoter'); setInput('c-rate', '25'); qp.addCrew();
+ok(qp.filteredCrew().length === 2, 'filteredCrew all');
+qp.setCrewFilter('', 'quoter');
+ok(qp.filteredCrew().length === 1 && qp.filteredCrew()[0].name === 'Bob Quoter', 'filteredCrew role filter');
+qp.setCrewFilter('ali', '');
+ok(qp.filteredCrew().length === 1 && qp.filteredCrew()[0].name === 'Alice Worker', 'filteredCrew name search');
+qp.setCrewFilter('', '');
+
+// ---- migrate backfills new fields ----
+reset();
+qp._reset({ crew: [{ id: 'c1', name: 'M', role: 'worker', rate: 25 }], jobs: [{ id: 'j1', cust: 'C', who: 'c1' }] });
+qp.migrate();
+const m2 = qp._db();
+ok(Array.isArray(m2.expenses) && m2.jobs[0].price === 0 && Array.isArray(m2.jobs[0].photos), 'migrate backfills expenses/price/photos');
+ok(m2.meta.settings.otMode === 'none', 'migrate backfills settings');
+
+// ---- export/import with expenses, photos, settings ----
+reset();
+setInput('set-otmode', 'daily'); setInput('set-otrate', '1.5'); qp.saveSettings();
+setInput('c-name', 'X1'); setInput('c-role', 'worker'); setInput('c-rate', '25'); qp.addCrew();
+setInput('j-cust', 'Full Job'); setInput('j-type', 'build'); setInput('j-who', qp._db().crew[0].id); qp.addJob();
+const fj = qp._db().jobs[0].id;
+qp.setPrice(fj, '500');
+setInput('ex-desc-' + fj, 'Lumber'); setInput('ex-amt-' + fj, '120'); qp.addExpense(fj);
+qp.pushPhoto(fj, 'data:image/jpeg;base64,BBBB');
+const full = JSON.parse(qp.exportJsonString());
+ok(full.expenses.length === 1 && full.meta.settings.otMode === 'daily', 'export carries expenses + settings');
+const cfull = qp.validateImport(full);
+ok(cfull.expenses.length === 1 && cfull.jobs[0].price === 500 && cfull.jobs[0].photos.length === 1 && cfull.meta.settings.otMode === 'daily', 'validateImport keeps expenses/price/photos/settings');
+
+// ---- invoice ----
+reset();
+setInput('c-name', 'V1'); setInput('c-role', 'worker'); setInput('c-rate', '25'); qp.addCrew();
+setInput('j-cust', 'Invoice Co'); setInput('j-type', 'build'); setInput('j-who', qp._db().crew[0].id); qp.addJob();
+const vj = qp._db().jobs[0].id;
+qp.setHours(vj, '4'); qp.setPrice(vj, '400');
+setInput('ex-desc-' + vj, 'Steel'); setInput('ex-amt-' + vj, '150'); qp.addExpense(vj);
+qp.openInvoice(vj);
+const invHtml = sandbox.document.getElementById('invoice-root').innerHTML;
+ok(invHtml.includes('Invoice Co') && invHtml.includes('Total due') && invHtml.includes('$400.00'), 'openInvoice renders invoice with price total');
+qp.closeInvoice();
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
