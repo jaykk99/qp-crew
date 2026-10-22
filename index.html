@@ -156,6 +156,7 @@
           <button class="ghost" onclick="schedNav(-1)">&#8592; Prev</button>
           <button class="ghost" onclick="schedNav(0)">This week</button>
           <button class="ghost" onclick="schedNav(1)">Next &#8594;</button>
+          <button class="ghost" onclick="copyWeek()">Copy week &#8594; next</button>
         </div>
         <div id="sched-range" class="muted"></div>
       </div>
@@ -248,6 +249,7 @@ function migrate(){
     if (!Array.isArray(j.photos)) j.photos = [];
     if (!j.status) j.status = 'assigned';
     if (!j.created) j.created = Date.now();
+    if (typeof j.payableAt !== 'number') j.payableAt = 0;
   });
 }
 
@@ -435,7 +437,10 @@ function buildAmount(job){
 function setStatus(id, s){
   const j = jobById(id); if (!j) return;
   if (!STATUS.some(x => x.key === s)) return;
+  const was = j.status;
   j.status = s;
+  if (s === 'payable' && was !== 'payable') j.payableAt = Date.now();
+  if (s !== 'payable') j.payableAt = 0;
   if (s === 'payable' && j.type === 'build' && !j.amount) j.amount = buildAmount(j);
   if (s === 'paid' && !j.paidAt) j.paidAt = Date.now();
   if (s !== 'paid') j.paidAt = 0;
@@ -470,6 +475,7 @@ function confirmAndPayable(id){
   logAct(j.cust + ' job -> customer confirmed');
   j.status = 'payable';
   if (j.type === 'build' && !j.amount) j.amount = buildAmount(j);
+  j.payableAt = Date.now();
   j.paidAt = 0;
   logAct(j.cust + ' job -> payable (' + fmtMoney(j.amount) + ')');
   save(); render();
@@ -630,6 +636,63 @@ function crewOtTotals(crewId){
   let otMins = 0;
   db.jobs.filter(j => j.who === crewId).forEach(j => { otMins += jobLabor(j.id).otMins; });
   return { otMins, otPay: round2(otMins / 60 * rate * st.otRate) };
+}
+// Logged minutes per calendar day per crew member, with that day's share of
+// overtime. Powers the hours CSV export.
+function crewOtDayBuckets(crewId){
+  const st = otSettings();
+  const days = {};
+  const logs = db.timeLogs.filter(t => t.end && t.crewId === crewId);
+  logs.forEach(t => {
+    const k = dayKey(new Date(t.start));
+    const row = days[k] || (days[k] = { mins: 0, ot: 0 });
+    row.mins += logMinutes(t);
+  });
+  if (st.otMode !== 'none' && logs.length) {
+    const limit = st.otMode === 'daily' ? 8 * 60 : 40 * 60;
+    const buckets = {};
+    logs.forEach(t => {
+      const k = st.otMode === 'daily' ? dayKey(new Date(t.start)) : weekStartKey(new Date(t.start));
+      (buckets[k] = buckets[k] || []).push(t);
+    });
+    Object.values(buckets).forEach(list => {
+      const total = list.reduce((s, t) => s + logMinutes(t), 0);
+      const ot = Math.max(0, total - limit);
+      if (!ot) return;
+      list.forEach(t => {
+        const dk = dayKey(new Date(t.start));
+        days[dk].ot += Math.round(ot * (total ? logMinutes(t) / total : 0));
+      });
+    });
+  }
+  return days;
+}
+function exportHoursCsvString(){
+  const rows = [['Crew', 'Date', 'Regular hours', 'OT hours', 'Rate ($/hr)', 'Regular pay', 'OT pay', 'Total pay']];
+  const st = otSettings();
+  db.crew.slice().sort((a, b) => a.name.localeCompare(b.name)).forEach(c => {
+    const rate = typeof c.rate === 'number' ? c.rate : DEFAULT_RATE;
+    const days = crewOtDayBuckets(c.id);
+    Object.keys(days).sort().forEach(k => {
+      const d = days[k];
+      const otMins = Math.min(d.ot, d.mins);
+      const regH = round2((d.mins - otMins) / 60);
+      const otH = round2(otMins / 60);
+      const regPay = round2(regH * rate);
+      const otPay = round2(otH * rate * st.otRate);
+      rows.push([c.name, k, regH.toFixed(2), otH.toFixed(2), rate.toFixed(2),
+        regPay.toFixed(2), otPay.toFixed(2), round2(regPay + otPay).toFixed(2)]);
+    });
+  });
+  return rows.map(r => r.map(v => '"' + String(v).replace(/"/g, '""') + '"').join(',')).join('\r\n');
+}
+function exportHoursCsv(){
+  const blob = new Blob([exportHoursCsvString()], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'qp-hours-' + todayISO() + '.csv';
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
 }
 
 // ---------- expenses / pricing / profit ----------
@@ -864,6 +927,41 @@ function delShift(id){
   db.shifts = db.shifts.filter(s => s.id !== id);
   save(); render();
 }
+function dupShift(id){
+  const s = db.shifts.find(x => x.id === id); if (!s) return;
+  db.shifts.push({ id: uid(), crewId: s.crewId, jobId: s.jobId && jobById(s.jobId) ? s.jobId : null,
+    date: s.date, start: s.start, end: s.end, notes: s.notes });
+  logAct('Duplicated shift for ' + crewName(s.crewId) + ' on ' + fmtDate(s.date));
+  save(); renderSched();
+}
+function weekKeys(offset){
+  const start = weekStart(offset || 0);
+  const keys = [];
+  for (let i = 0; i < 7; i++) { const d = new Date(start); d.setDate(d.getDate() + i); keys.push(dayKey(d)); }
+  return keys;
+}
+function copyWeek(){
+  const srcKeys = new Set(weekKeys(schedOffset));
+  const src = db.shifts.filter(s => srcKeys.has(s.date));
+  if (!src.length) { alert('No shifts in the week you are viewing.'); return; }
+  const base = weekStart(schedOffset);
+  const seen = new Set(db.shifts.map(x => [x.crewId, x.date, x.start, x.end].join('|')));
+  let added = 0, skipped = 0;
+  src.forEach(s => {
+    const d = new Date(s.date + 'T00:00:00'); d.setDate(d.getDate() + 7);
+    const key = dayKey(d);
+    const sig = [s.crewId, key, s.start, s.end].join('|');
+    if (seen.has(sig)) { skipped++; return; }
+    seen.add(sig);
+    db.shifts.push({ id: uid(), crewId: s.crewId, jobId: s.jobId && jobById(s.jobId) ? s.jobId : null,
+      date: key, start: s.start, end: s.end, notes: s.notes });
+    added++;
+  });
+  logAct('Copied ' + added + ' shift(s) from week of ' + fmtDate(dayKey(base)) + ' to next week' +
+    (skipped ? ' (' + skipped + ' already scheduled, skipped)' : ''));
+  save(); renderSched();
+  alert('Copied ' + added + ' shift(s) to next week.' + (skipped ? ' Skipped ' + skipped + ' already there.' : ''));
+}
 function schedNav(d){
   if (d === 0) schedOffset = 0; else schedOffset += d;
   renderSched();
@@ -898,6 +996,7 @@ function renderSched(){
         ${s.notes ? `<span class="muted">${esc(s.notes)}</span>` : ''}
         <span class="muted">${fmtDur(minsBetween(s.start, s.end))}</span>
         <span style="flex:1"></span>
+        <button class="del print-hide" onclick="dupShift('${s.id}')" title="Duplicate shift" aria-label="Duplicate shift">&#x2398;</button>
         <button class="del print-hide" onclick="delShift('${s.id}')" title="Delete shift">&times;</button>
       </div>`;
     }).join('') || '<div class="muted" style="padding:10px 14px">No shifts.</div>';
@@ -956,6 +1055,10 @@ function renderJobs(){
 }
 
 // ---------- dashboard ----------
+function waitDays(j){
+  if (!j || !j.payableAt) return 0;
+  return Math.max(0, Math.floor((Date.now() - j.payableAt) / 86400000));
+}
 function paidByDay(days){
   const out = [];
   const now = new Date(); now.setHours(0, 0, 0, 0);
@@ -974,7 +1077,12 @@ function renderDash(){
   const owed = round2(payable.reduce((s, j) => s + (j.amount || 0), 0));
   const paidTotal = round2(paid.reduce((s, j) => s + (j.amount || 0), 0));
   const byPerson = {};
-  payable.forEach(j => { const n = crewName(j.who); byPerson[n] = round2((byPerson[n] || 0) + (j.amount || 0)); });
+  payable.forEach(j => {
+    const n = crewName(j.who);
+    const row = byPerson[n] || (byPerson[n] = { amount: 0, wait: 0 });
+    row.amount = round2(row.amount + (j.amount || 0));
+    row.wait = Math.max(row.wait, waitDays(j));
+  });
   const active = db.jobs.filter(j => !['paid', 'payable'].includes(j.status)).length;
   const chips = STATUS.map(s => {
     const n = db.jobs.filter(j => j.status === s.key).length;
@@ -1006,10 +1114,10 @@ function renderDash(){
     </div>
     <div class="card"><h3>Paid out, last 14 days</h3><div class="bars">${bars}</div></div>
     <div class="card"><h3>Who gets paid</h3>
-      ${Object.keys(byPerson).length ? Object.entries(byPerson).map(([n, a]) =>
-        `<div class="row" style="justify-content:space-between; padding:6px 0"><b>${esc(n)}</b><span class="money">${fmtMoney(a)}</span></div>`).join('')
+      ${Object.keys(byPerson).length ? Object.entries(byPerson).map(([n, r]) =>
+        `<div class="row" style="justify-content:space-between; padding:6px 0"><span><b>${esc(n)}</b>${r.wait > 0 ? ` <span class="muted">waiting ${r.wait}d</span>` : ''}</span><span class="money">${fmtMoney(r.amount)}</span></div>`).join('')
         : '<div class="muted">Nobody owed right now.</div>'}
-      ${Object.keys(byPerson).length ? `<div style="margin-top:10px" class="print-hide"><button class="ghost" onclick="exportPayrollCsv()">Payroll CSV</button></div>` : ''}
+      ${Object.keys(byPerson).length ? `<div style="margin-top:10px" class="print-hide"><button class="ghost" onclick="exportPayrollCsv()">Payroll CSV</button> <button class="ghost" onclick="exportHoursCsv()">Hours CSV</button></div>` : ''}
     </div>
     <div class="card"><h3>Job margins</h3>
       ${margins.length ? margins.slice(0, 8).map(x =>
@@ -1061,7 +1169,7 @@ function validateImport(obj){
     date: String(j.date || ''), notes: String(j.notes || ''),
     status: STATUS.some(s => s.key === j.status) ? j.status : 'assigned',
     hours: Math.max(0, parseFloat(j.hours) || 0), amount: Math.max(0, parseFloat(j.amount) || 0),
-    price: Math.max(0, parseFloat(j.price) || 0),
+    price: Math.max(0, parseFloat(j.price) || 0), payableAt: j.payableAt || 0,
     photos: Array.isArray(j.photos) ? j.photos.filter(p => p && typeof p.dataUrl === 'string' && p.dataUrl.length < 2000000).slice(0, 20).map(p => ({
       id: String(p.id || Math.random().toString(36).slice(2)), dataUrl: p.dataUrl, ts: p.ts || Date.now()
     })) : [],
@@ -1077,7 +1185,6 @@ function validateImport(obj){
     const r = parseFloat(obj.meta.settings.otRate);
     clean.meta.settings = { otMode: m, otRate: (!isNaN(r) && r >= 1) ? r : 1.5 };
   }
-  return clean;
   if (Array.isArray(obj.shifts)) clean.shifts = obj.shifts.filter(s => s && s.id && s.crewId && s.date && s.start && s.end).map(s => ({
     id: String(s.id), crewId: String(s.crewId), jobId: s.jobId ? String(s.jobId) : null,
     date: String(s.date), start: String(s.start), end: String(s.end), notes: String(s.notes || '')
@@ -1159,6 +1266,7 @@ try { globalThis.__qp = { addCrew, addJob, addShift, clockIn, clockOut, delTimeL
   exportJsonString, validateImport, weekStart, dayKey, paidByDay, crewStats, isOverdue,
   convertToBuild, dupJob, confirmAndPayable,
   addExpense, delExpense, setPrice, expensesForJob, materialsCost, jobProfit, jobLabor, crewOtMins, crewOtTotals,
+  crewOtDayBuckets, exportHoursCsvString, waitDays, dupShift, copyWeek, weekKeys,
   otSettings, saveSettings, renderSettings,
   pushPhoto, delPhoto, photosForJob, attachPhoto,
   integrityReport, renderIntegrity, filteredCrew,

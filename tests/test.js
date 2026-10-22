@@ -54,6 +54,7 @@ function reset() {
   qp._reset({ crew: [], jobs: [], shifts: [], timeLogs: [], activity: [], meta: { version: 2 } });
 }
 function setInput(id, v) { sandbox.document.getElementById(id).value = v; }
+function futureISO(n){ const d = new Date(); d.setDate(d.getDate() + n); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
 
 // ---- helpers ----
 reset();
@@ -147,14 +148,15 @@ ok(chart.length === 14 && chart.every(c => typeof c.total === 'number'), 'paidBy
 reset();
 setInput('c-name', 'S1'); setInput('c-role', 'worker'); setInput('c-rate', '25'); qp.addCrew();
 const s1 = qp._db().crew[0].id;
-setInput('s-crew', s1); setInput('s-date', '2026-10-21'); setInput('s-start', '08:00'); setInput('s-end', '16:00'); setInput('s-notes', ''); setInput('s-job', '');
+const shiftDate1 = futureISO(1), shiftDate2 = futureISO(2);
+setInput('s-crew', s1); setInput('s-date', shiftDate1); setInput('s-start', '08:00'); setInput('s-end', '16:00'); setInput('s-notes', ''); setInput('s-job', '');
 qp.addShift();
 ok(qp._db().shifts.length === 1, 'addShift adds');
 setInput('s-start', '12:00'); setInput('s-end', '20:00'); qp.addShift(); // confirm() stubbed true
 ok(qp._db().shifts.length === 2, 'overlapping shift added after confirm');
-const ov = qp.findOverlaps(s1, '2026-10-21');
+const ov = qp.findOverlaps(s1, shiftDate1);
 ok(ov.length === 1, 'findOverlaps detects clash');
-const noOv = qp.findOverlaps(s1, '2026-10-22');
+const noOv = qp.findOverlaps(s1, shiftDate2);
 ok(noOv.length === 0, 'findOverlaps empty on clear day');
 alerts.length = 0; setInput('s-start', '20:00'); setInput('s-end', '08:00'); qp.addShift();
 ok(alerts.length === 1 && qp._db().shifts.length === 2, 'addShift rejects end before start');
@@ -379,6 +381,77 @@ qp.openInvoice(vj);
 const invHtml = sandbox.document.getElementById('invoice-root').innerHTML;
 ok(invHtml.includes('Invoice Co') && invHtml.includes('Total due') && invHtml.includes('$400.00'), 'openInvoice renders invoice with price total');
 qp.closeInvoice();
+
+// ---- import restores shifts, time logs, activity (dead-code fix) ----
+reset();
+setInput('c-name', 'I1'); setInput('c-role', 'worker'); setInput('c-rate', '25'); qp.addCrew();
+const i1 = qp._db().crew[0].id;
+setInput('s-crew', i1); setInput('s-date', futureISO(1)); setInput('s-start', '08:00'); setInput('s-end', '16:00'); setInput('s-notes', ''); setInput('s-job', '');
+qp.addShift();
+setInput('j-cust', 'Imp Job'); setInput('j-type', 'build'); setInput('j-who', i1); qp.addJob();
+const ij = qp._db().jobs[0].id;
+qp.clockIn(ij); qp.clockOut(ij);
+const withLogs = JSON.parse(qp.exportJsonString());
+ok(withLogs.shifts.length === 1 && withLogs.timeLogs.length === 1 && withLogs.activity.length > 0, 'export carries shifts/time logs/activity');
+const restored = qp.validateImport(withLogs);
+ok(restored.shifts.length === 1 && restored.timeLogs.length === 1 && restored.activity.length > 0, 'validateImport restores shifts/time logs/activity');
+const badRows = qp.validateImport({ crew: [], jobs: [], shifts: [{ nope: 1 }], timeLogs: [{ nope: 1 }], activity: [{ nope: 1 }] });
+ok(badRows.shifts.length === 0 && badRows.timeLogs.length === 0 && badRows.activity.length === 0, 'validateImport drops malformed shift/log/activity rows');
+
+// ---- copyWeek + dupShift ----
+reset();
+setInput('c-name', 'W9'); setInput('c-role', 'worker'); setInput('c-rate', '25'); qp.addCrew();
+const w9 = qp._db().crew[0].id;
+setInput('s-crew', w9); setInput('s-date', ''); setInput('s-start', '09:00'); setInput('s-end', '12:00'); setInput('s-notes', ''); setInput('s-job', '');
+qp.addShift();
+setInput('s-start', '13:00'); setInput('s-end', '17:00'); qp.addShift();
+ok(qp._db().shifts.length === 2, 'two shifts scheduled today');
+const todayKey = qp.dayKey(new Date());
+const nextWeekKey = qp.dayKey(new Date(Date.now() + 7 * 86400000));
+qp.copyWeek();
+const shifted = qp._db().shifts.filter(s => s.date === nextWeekKey);
+ok(shifted.length === 2 && shifted.every(s => s.crewId === w9), 'copyWeek copies this week to next week');
+qp.copyWeek();
+ok(qp._db().shifts.length === 4, 'copyWeek skips duplicates on second run');
+const d0 = qp._db().shifts[0].id;
+qp.dupShift(d0);
+ok(qp._db().shifts.length === 5 && qp._db().shifts[4].date === qp._db().shifts[0].date, 'dupShift duplicates one shift');
+
+// ---- payableAt aging ----
+reset();
+setInput('c-name', 'P1'); setInput('c-role', 'worker'); setInput('c-rate', '25'); qp.addCrew();
+setInput('j-cust', 'Age Job'); setInput('j-type', 'build'); setInput('j-who', qp._db().crew[0].id); qp.addJob();
+const ajid = qp._db().jobs[0].id;
+qp.setHours(ajid, '2'); qp.setStatus(ajid, 'payable');
+ok(qp._db().jobs[0].payableAt > 0, 'setStatus payable stamps payableAt');
+ok(qp.waitDays(qp._db().jobs[0]) === 0, 'waitDays 0 when just became payable');
+qp._db().jobs[0].payableAt = Date.now() - 3 * 86400000;
+ok(qp.waitDays(qp._db().jobs[0]) === 3, 'waitDays counts 3 days');
+qp.setStatus(ajid, 'done');
+ok(qp._db().jobs[0].payableAt === 0, 'leaving payable clears payableAt');
+qp._reset({ crew: [], jobs: [{ id: 'j9', cust: 'Old', who: '' }] });
+qp.migrate();
+ok(qp._db().jobs[0].payableAt === 0, 'migrate backfills payableAt');
+const withPayAt = qp.validateImport({ crew: [], jobs: [{ id: 'j9', cust: 'Old', payableAt: 123 }] });
+ok(withPayAt.jobs[0].payableAt === 123, 'validateImport keeps payableAt');
+
+// ---- hours CSV / per-day OT buckets ----
+reset();
+qp._db().meta.settings.otMode = 'daily';
+setInput('c-name', 'H2'); setInput('c-role', 'worker'); setInput('c-rate', '20'); qp.addCrew();
+const h2 = qp._db().crew[0].id;
+const base = new Date(); base.setHours(8, 0, 0, 0);
+qp._db().timeLogs.push({ id: 't1', jobId: 'j1', crewId: h2, start: base.getTime(), end: base.getTime() + 10 * 3600000 }); // 10h day -> 2h OT
+const buckets = qp.crewOtDayBuckets(h2);
+const bk = qp.dayKey(base);
+ok(buckets[bk].mins === 600 && buckets[bk].ot === 120, 'crewOtDayBuckets splits OT per day');
+const hcsv = qp.exportHoursCsvString();
+ok(hcsv.includes('H2') && hcsv.includes('"8.00","2.00"') && hcsv.includes('"160.00","60.00","220.00"'), 'exportHoursCsvString rows with reg/OT hours and pay');
+reset();
+setInput('c-name', 'H3'); setInput('c-role', 'worker'); setInput('c-rate', '25'); qp.addCrew();
+qp._db().timeLogs.push({ id: 't2', jobId: 'j1', crewId: qp._db().crew[0].id, start: base.getTime(), end: base.getTime() + 9 * 3600000 });
+const noOt = qp.crewOtDayBuckets(qp._db().crew[0].id);
+ok(noOt[qp.dayKey(base)].ot === 0, 'no OT buckets when OT rule is off');
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

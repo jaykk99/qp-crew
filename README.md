@@ -6,11 +6,12 @@ Crew tracker for **Quonset Place**: add quoters and workers, create jobs, move j
 
 ## Features
 
-- **Schedule tab**: weekly shift planner per crew member with overlap warnings and week totals
+- **Schedule tab**: weekly shift planner per crew member with overlap warnings and week totals; copy a whole week to next week, duplicate individual shifts
 - **Time logging**: clock in/out on build jobs; hours and pay auto-computed from logged time
 - **Crew profiles**: per-person stats (jobs, logged hours, awaiting pay, paid out, upcoming shifts)
 - **Jobs**: search, status filter, sorting by date/customer, quote-to-build conversion, duplication, overdue warnings
-- **Dashboard**: pipeline counts, owed/paid totals, 14-day payout chart, upcoming shifts, crew hours leaderboard, activity log
+- **Dashboard**: pipeline counts, owed/paid totals with days-waiting aging, 14-day payout chart, upcoming shifts, crew hours leaderboard, activity log
+- **Payroll exports**: payroll CSV (amounts owed) + hours CSV (per crew, per day, regular vs overtime hours and pay)
 - **Job costs**: per-job customer price, material expenses, and profit-margin math (price minus labor minus materials) with a margins card on the dashboard
 - **Overtime**: configurable OT rule (off / after 8h per day / after 40h per week) computed from clock-in logs and split across jobs; OT hours/pay shown on crew profiles
 - **Invoices**: print-friendly per-job invoice (labor lines, materials, total due, payment status)
