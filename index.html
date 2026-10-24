@@ -263,6 +263,16 @@ const crewDetailOpen = {};
 // ---------- helpers ----------
 const uid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
 const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+// IDs are rendered unescaped inside inline onclick="fn('${id}')" handlers
+// all over this file (uid()'s own output is pure base36, so that's safe
+// for internally-created records) -- but validateImport() used to pass
+// imported id/foreign-key fields straight through as String(x). A crafted
+// backup file with e.g. {"id": "x');alert(1);//"} would break out of that
+// JS string literal the moment anyone clicked that crew/job's card.
+// sanitizeId() strips everything but a safe charset; applying it to both
+// an id and every field that references it keeps relationships intact
+// since it's a pure function of the input.
+const sanitizeId = s => String(s ?? '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 64);
 const round2 = n => Math.round((n || 0) * 100) / 100;
 function fmtMoney(n){ return '$' + round2(n).toFixed(2); }
 function telHref(phone){ const d = String(phone || '').replace(/\D/g, ''); return d ? 'tel:+' + (d.length === 10 ? '1' + d : d) : ''; }
@@ -1157,42 +1167,42 @@ function validateImport(obj){
   if (!Array.isArray(obj.crew) || !Array.isArray(obj.jobs)) throw new Error('Backup is missing crew or jobs.');
   const clean = freshDb();
   clean.crew = obj.crew.filter(c => c && c.id && c.name).map(c => ({
-    id: String(c.id), name: String(c.name), phone: String(c.phone || ''),
+    id: sanitizeId(c.id), name: String(c.name), phone: String(c.phone || ''),
     role: c.role === 'worker' ? 'worker' : 'quoter',
     rate: Math.max(0, parseFloat(c.rate) || DEFAULT_RATE),
     quoteFee: Math.max(0, parseFloat(c.quoteFee) || DEFAULT_RATE),
     created: c.created || Date.now()
-  }));
+  })).filter(c => c.id); // drop rows an all-special-chars id sanitized down to empty
   clean.jobs = obj.jobs.filter(j => j && j.id && j.cust).map(j => ({
-    id: String(j.id), cust: String(j.cust), phone: String(j.phone || ''), addr: String(j.addr || ''),
-    type: j.type === 'build' ? 'build' : 'quote', who: String(j.who || ''),
+    id: sanitizeId(j.id), cust: String(j.cust), phone: String(j.phone || ''), addr: String(j.addr || ''),
+    type: j.type === 'build' ? 'build' : 'quote', who: sanitizeId(j.who || ''),
     date: String(j.date || ''), notes: String(j.notes || ''),
     status: STATUS.some(s => s.key === j.status) ? j.status : 'assigned',
     hours: Math.max(0, parseFloat(j.hours) || 0), amount: Math.max(0, parseFloat(j.amount) || 0),
     price: Math.max(0, parseFloat(j.price) || 0), payableAt: j.payableAt || 0,
     photos: Array.isArray(j.photos) ? j.photos.filter(p => p && typeof p.dataUrl === 'string' && p.dataUrl.length < 2000000).slice(0, 20).map(p => ({
-      id: String(p.id || Math.random().toString(36).slice(2)), dataUrl: p.dataUrl, ts: p.ts || Date.now()
+      id: sanitizeId(p.id || Math.random().toString(36).slice(2)), dataUrl: p.dataUrl, ts: p.ts || Date.now()
     })) : [],
     created: j.created || Date.now(), paidAt: j.paidAt || 0
-  }));
+  })).filter(j => j.id);
   if (Array.isArray(obj.expenses)) clean.expenses = obj.expenses.filter(e => e && e.id && e.jobId && e.desc).map(e => ({
-    id: String(e.id), jobId: String(e.jobId), desc: String(e.desc),
+    id: sanitizeId(e.id), jobId: sanitizeId(e.jobId), desc: String(e.desc),
     amount: Math.max(0, parseFloat(e.amount) || 0),
     date: String(e.date || ''), created: e.created || Date.now()
-  }));
+  })).filter(e => e.id && e.jobId);
   if (obj.meta && obj.meta.settings && typeof obj.meta.settings === 'object') {
     const m = ['none', 'daily', 'weekly'].includes(obj.meta.settings.otMode) ? obj.meta.settings.otMode : 'none';
     const r = parseFloat(obj.meta.settings.otRate);
     clean.meta.settings = { otMode: m, otRate: (!isNaN(r) && r >= 1) ? r : 1.5 };
   }
   if (Array.isArray(obj.shifts)) clean.shifts = obj.shifts.filter(s => s && s.id && s.crewId && s.date && s.start && s.end).map(s => ({
-    id: String(s.id), crewId: String(s.crewId), jobId: s.jobId ? String(s.jobId) : null,
+    id: sanitizeId(s.id), crewId: sanitizeId(s.crewId), jobId: s.jobId ? sanitizeId(s.jobId) : null,
     date: String(s.date), start: String(s.start), end: String(s.end), notes: String(s.notes || '')
-  }));
+  })).filter(s => s.id && s.crewId);
   if (Array.isArray(obj.timeLogs)) clean.timeLogs = obj.timeLogs.filter(t => t && t.id && t.jobId && t.start).map(t => ({
-    id: String(t.id), jobId: String(t.jobId), crewId: String(t.crewId || ''),
+    id: sanitizeId(t.id), jobId: sanitizeId(t.jobId), crewId: sanitizeId(t.crewId || ''),
     start: Number(t.start) || Date.now(), end: t.end ? Number(t.end) : null
-  }));
+  })).filter(t => t.id && t.jobId);
   if (Array.isArray(obj.activity)) clean.activity = obj.activity.filter(a => a && a.ts).map(a => ({
     ts: Number(a.ts) || Date.now(), text: String(a.text || '')
   })).slice(0, 200);
@@ -1263,7 +1273,7 @@ render();
 try { globalThis.__qp = { addCrew, addJob, addShift, clockIn, clockOut, delTimeLog, setStatus, setHours, setAmount,
   updateCrew, logAct, exportPayrollCsvString,
   findOverlaps, logMinutes, jobLogMinutes, jobHasLogs, fmtMoney, fmtDur, fmtTime24, minsBetween, migrate,
-  exportJsonString, validateImport, weekStart, dayKey, paidByDay, crewStats, isOverdue,
+  exportJsonString, validateImport, sanitizeId, weekStart, dayKey, paidByDay, crewStats, isOverdue,
   convertToBuild, dupJob, confirmAndPayable,
   addExpense, delExpense, setPrice, expensesForJob, materialsCost, jobProfit, jobLabor, crewOtMins, crewOtTotals,
   crewOtDayBuckets, exportHoursCsvString, waitDays, dupShift, copyWeek, weekKeys,

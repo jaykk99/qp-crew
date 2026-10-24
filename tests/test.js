@@ -179,6 +179,34 @@ ok(threw, 'validateImport rejects garbage');
 const clean2 = qp.validateImport({ crew: [{ id: 'x' }], jobs: [] });
 ok(clean2.crew.length === 0, 'validateImport drops nameless crew');
 
+// ---- import XSS hardening ----
+// IDs are rendered unescaped inside inline onclick="fn('${id}')" handlers
+// throughout index.html. A crafted backup file with a single-quote in an
+// id/foreign-key field used to break out of that JS string literal the
+// moment anyone clicked the card -- e.g. id "x');alert(1);//" became
+// onclick="toggleCrewDetail('x');alert(1);//')". sanitizeId() must strip
+// anything that could break out of a single-quoted JS string, and
+// validateImport() must apply it to every id/foreign-key field it reads
+// from an untrusted file.
+ok(qp.sanitizeId("x');alert(1);//") === 'xalert1', 'sanitizeId strips quotes/parens/semicolons');
+ok(!qp.sanitizeId("'\"`\\;()").includes("'"), 'sanitizeId output can never contain a single quote');
+const evilImport = qp.validateImport({
+  crew: [{ id: "c1');alert('pwned", name: 'Evil' }],
+  jobs: [{ id: "j1\");alert(1)//", cust: 'C', who: "c1');alert('pwned" }],
+  expenses: [{ id: "e1'", jobId: "j1\");alert(1)//", desc: 'D', amount: 5 }],
+  shifts: [{ id: "s1'", crewId: "c1');alert('pwned", date: '2026-01-01', start: '08:00', end: '09:00' }],
+  timeLogs: [{ id: "t1'", jobId: "j1\");alert(1)//", crewId: "c1');alert('pwned", start: 1 }],
+});
+ok(!evilImport.crew[0].id.includes("'"), 'imported crew id has no quote after sanitizing');
+ok(!evilImport.jobs[0].id.includes('"'), 'imported job id has no double-quote after sanitizing');
+ok(evilImport.jobs[0].who === evilImport.crew[0].id, 'sanitized foreign key (job.who) still matches sanitized crew id');
+ok(evilImport.expenses[0].jobId === evilImport.jobs[0].id, 'sanitized foreign key (expense.jobId) still matches sanitized job id');
+ok(evilImport.shifts[0].crewId === evilImport.crew[0].id, 'sanitized foreign key (shift.crewId) still matches sanitized crew id');
+ok(evilImport.timeLogs[0].jobId === evilImport.jobs[0].id && evilImport.timeLogs[0].crewId === evilImport.crew[0].id,
+  'sanitized foreign keys (timeLog.jobId/crewId) still match');
+const allSpecialChars = qp.validateImport({ crew: [{ id: "'\"();", name: 'X' }], jobs: [] });
+ok(allSpecialChars.crew.length === 0, 'an id that sanitizes down to empty is dropped, not kept as id ""');
+
 // ---- quote fee model ----
 reset();
 setInput('c-name', 'Quoter Z'); setInput('c-role', 'quoter'); setInput('c-rate', '25'); setInput('c-qfee', '40'); qp.addCrew();
