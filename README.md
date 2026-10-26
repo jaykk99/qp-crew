@@ -1,6 +1,8 @@
+Live: https://jaykk99.github.io/qp-crew/
+
 # qp-crew
 
-Live: **https://jaykk99.github.io/qp-crew/**
+Live: https://jaykk99.github.io/qp-crew/
 
 Crew tracker for **Quonset Place**: add quoters and workers, create jobs, move jobs through a 6-stage status pipeline (assigned, in progress, done, customer confirmed, payable, paid). Workers build at $25/hr and nobody gets paid until the customer confirms.
 
